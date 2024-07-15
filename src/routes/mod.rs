@@ -1,0 +1,50 @@
+use crate::{utils::app_error::AppError, AppState};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde::Serialize;
+
+#[derive(Serialize, Debug)]
+struct StopResponse {
+    expected_arrival_time: String,
+}
+
+pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppError> {
+    let result = state
+        .mta_client
+        .fetch_stop_info()
+        .await
+        .map_err(|e| {
+            println!("Failed to fetch stop info: {:?}", e);
+            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+        })?
+        .map(|s| {
+            (
+                StatusCode::OK,
+                Json(StopResponse {
+                    expected_arrival_time: s.expected_arrival_time,
+                }),
+            )
+                .into_response()
+        })
+        .ok_or_else(|| {
+            println!("No expected arrival time found");
+            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+        });
+
+    result
+}
+
+#[derive(serde::Serialize)]
+pub struct StopInformation {
+    minutes: String,
+    path_id: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct InternalError {
+    message: String,
+}

@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::types::response_formats;
 
 #[derive(Clone)]
@@ -8,6 +10,7 @@ pub struct MtaClient {
 
 pub struct StopInformation {
     pub expected_arrival_time: String,
+    pub minutes_until_arrival: i64,
 }
 
 impl MtaClient {
@@ -21,7 +24,7 @@ impl MtaClient {
     }
 
     pub async fn fetch_stop_info(&self) -> Result<Option<StopInformation>, reqwest::Error> {
-        Ok(self.client.get(&format!("https://bustime.mta.info/api/siri/stop-monitoring.json?key={}&MonitoringRef=MTA_400080", self.api_key))
+        let expected_arrival_time = match self.client.get(&format!("https://bustime.mta.info/api/siri/stop-monitoring.json?key={}&MonitoringRef=MTA_400080", self.api_key))
             .send()
             .await?
             .json::<response_formats::GetStopInfoResponse>().await?.Siri.ServiceDelivery.StopMonitoringDelivery
@@ -31,13 +34,21 @@ impl MtaClient {
                     .MonitoredCall
                     .ExpectedArrivalTime
                     .clone()
-            )).map(|d| {
-              match d {
-                Some(s) => Some(StopInformation {
-                  expected_arrival_time: s,
-                }),
-                None => None,
-              }
-            })
+            ) {
+                Some(s) => s,
+                None => return Ok(None),
+            };
+
+        match DateTime::parse_from_rfc3339(&expected_arrival_time) {
+            Ok(d) => {
+                let delta = d.signed_duration_since(Utc::now());
+
+                Ok(Some(StopInformation {
+                    expected_arrival_time,
+                    minutes_until_arrival: delta.num_minutes(),
+                }))
+            }
+            Err(_) => Ok(None),
+        }
     }
 }

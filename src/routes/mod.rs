@@ -11,6 +11,7 @@ use tracing::error;
 #[derive(Serialize, Debug)]
 struct StopResponse {
     expected_arrival_time: String,
+    minutes_until_arrival: i64,
 }
 
 pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppError> {
@@ -19,7 +20,7 @@ pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppErro
         .fetch_stop_info()
         .await
         .map_err(|e| {
-            error!("Failed to fetch stop info: {:?}", e);
+            error!("Failed to fetch stop info: {}", e);
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         })?
         .map(|s| {
@@ -27,6 +28,7 @@ pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppErro
                 StatusCode::OK,
                 Json(StopResponse {
                     expected_arrival_time: s.expected_arrival_time,
+                    minutes_until_arrival: s.minutes_until_arrival,
                 }),
             )
                 .into_response()

@@ -1,4 +1,4 @@
-use crate::{utils::app_error::AppError, AppState};
+use crate::{types::app_state::AppState, utils::app_error::AppError};
 use axum::{
     extract::State,
     http::StatusCode,
@@ -45,9 +45,4 @@ pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppErro
 pub struct StopInformation {
     minutes: String,
     path_id: String,
-}
-
-#[derive(serde::Serialize)]
-pub struct InternalError {
-    message: String,
 }

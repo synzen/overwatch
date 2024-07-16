@@ -3,6 +3,8 @@ mod types;
 mod utils;
 use axum::{routing::get, Router};
 use std::env;
+use tower_http::cors::CorsLayer;
+use tracing::info;
 use utils::mta_client::MtaClient;
 
 #[derive(Clone)]
@@ -12,6 +14,11 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+    info!("Starting app...");
+
+    let cors_middleware = CorsLayer::new();
+
     let state = AppState {
         mta_client: MtaClient::new(env::var("MTA_KEY").expect("MTA_KEY must be set!")),
     };
@@ -22,6 +29,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(root))
         .route("/stops/:id", get(routes::get_stop))
+        .layer(cors_middleware)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();

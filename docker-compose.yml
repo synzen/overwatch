@@ -1,0 +1,12 @@
+version: '3.8'
+name: overwatch
+services:
+  overwatch-api:
+    image: overwatch-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:3000"
+    env_file:
+      - .env

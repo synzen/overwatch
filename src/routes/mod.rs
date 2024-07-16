@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use tracing::error;
 
 #[derive(Serialize, Debug)]
 struct StopResponse {
@@ -18,7 +19,7 @@ pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppErro
         .fetch_stop_info()
         .await
         .map_err(|e| {
-            println!("Failed to fetch stop info: {:?}", e);
+            error!("Failed to fetch stop info: {:?}", e);
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         })?
         .map(|s| {
@@ -31,7 +32,7 @@ pub async fn get_stop(State(state): State<AppState>) -> Result<Response, AppErro
                 .into_response()
         })
         .ok_or_else(|| {
-            println!("No expected arrival time found");
+            error!("No expected arrival time found");
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         });
 

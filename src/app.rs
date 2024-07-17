@@ -1,21 +1,17 @@
-use crate::{routes, types::app_state::AppState, utils::mta_client::MtaClient};
+use crate::{routes::apply_routes, types::app_state::AppState, utils::mta_client::MtaClient};
 use axum::{routing::get, Router};
 use tower_http::cors::CorsLayer;
 
 pub fn gen_app(mta_key: &str) -> Router {
     let cors_middleware = CorsLayer::new();
-
     let state = AppState {
         mta_client: MtaClient::new(mta_key.to_string()),
     };
 
-    let app = Router::new()
+    apply_routes(Router::new())
         .route("/", get(root))
-        .route("/stops/:id", get(routes::get_stop))
         .layer(cors_middleware)
-        .with_state(state);
-
-    app
+        .with_state(state)
 }
 
 // basic handler that responds with a static string

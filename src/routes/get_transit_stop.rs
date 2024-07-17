@@ -5,13 +5,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
-#[derive(Serialize, Debug)]
-struct StopResponse {
-    expected_arrival_time: String,
-    minutes_until_arrival: i64,
+#[derive(Serialize, Deserialize)]
+pub struct StopResponse {
+    pub expected_arrival_time: String,
+    pub minutes_until_arrival: i64,
 }
 
 pub async fn get_transit_stop(State(state): State<AppState>) -> Result<Response, AppError> {
@@ -45,4 +45,79 @@ pub async fn get_transit_stop(State(state): State<AppState>) -> Result<Response,
 pub struct StopInformation {
     minutes: String,
     path_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::{to_bytes, Body},
+        http::{Request, StatusCode},
+    };
+    use chrono::{Duration, Utc};
+    use tower::ServiceExt;
+
+    use crate::{
+        app::gen_app,
+        types::response_formats::{
+            GetStopInfoResponse, MonitoredCall, MonitoredStopVisit, MonitoredVehicleJourney,
+            ServiceDelivery, Siri, StopMonitoringDelivery,
+        },
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn get_response() {
+        let mut mock_server = mockito::Server::new_async().await;
+
+        let app = gen_app(mock_server.url().as_str(), "key");
+
+        let future_date = Utc::now() + Duration::minutes(2);
+        let mock_response = GetStopInfoResponse {
+            Siri: Siri {
+                ServiceDelivery: ServiceDelivery {
+                    StopMonitoringDelivery: Vec::from([StopMonitoringDelivery {
+                        MonitoredStopVisit: Vec::from([MonitoredStopVisit {
+                            MonitoredVehicleJourney: MonitoredVehicleJourney {
+                                MonitoredCall: MonitoredCall {
+                                    ExpectedArrivalTime: Some(future_date.to_rfc3339()),
+                                },
+                            },
+                        }]),
+                    }]),
+                },
+            },
+        };
+
+        let mock_server = mock_server
+            .mock("GET", "/api/siri/stop-monitoring.json")
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::to_string(&mock_response).expect("Failed to serialize test response"),
+            )
+            .match_query(mockito::Matcher::Regex(".*".to_string()))
+            .create_async()
+            .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/transit-stops/1")
+                    .body(Body::empty())
+                    .expect("Failed to create request"),
+            )
+            .await
+            .expect("Failed to get response");
+
+        mock_server.assert();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: StopResponse = serde_json::from_slice(&body)
+            .expect("Failed to deserialize response body into StopResponse struct");
+
+        assert_eq!(body.minutes_until_arrival > 0, true);
+        assert_eq!(body.minutes_until_arrival < 4, true);
+        assert_eq!(body.expected_arrival_time, future_date.to_rfc3339());
+    }
 }

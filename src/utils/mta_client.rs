@@ -7,6 +7,7 @@ use crate::types::{
 
 #[derive(Clone)]
 pub struct MtaClient {
+    host: String,
     api_key: String,
     client: reqwest::Client,
 }
@@ -35,11 +36,22 @@ pub struct FindTransitRoutesResult {
     pub routes: Vec<FindTransitRoutesResultRoute>,
 }
 
+pub struct MtaClientError {
+    pub message: String,
+}
+
+impl std::fmt::Display for MtaClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "MtaClientError: {}", self.message)
+    }
+}
+
 impl MtaClient {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(host: String, api_key: String) -> Self {
         let request_client = reqwest::Client::new();
 
         MtaClient {
+            host,
             api_key,
             client: request_client,
         }
@@ -49,7 +61,7 @@ impl MtaClient {
         &self,
         latitude: String,
         longitude: String,
-    ) -> Result<TransitRoutes, reqwest::Error> {
+    ) -> Result<TransitRoutes, MtaClientError> {
         let mapped_routes = self
             .client
             .get(&format!(
@@ -59,9 +71,15 @@ impl MtaClient {
                 self.api_key
             ))
             .send()
-            .await?
+            .await
+            .map_err(|e| MtaClientError {
+                message: e.to_string()
+            })?
             .json::<GetRoutesForLocationResponse>()
-            .await?
+            .await
+            .map_err(|e| MtaClientError {
+                message: e.to_string()
+            })?
             .data
             .routes
             .iter()
@@ -80,47 +98,87 @@ impl MtaClient {
     pub async fn get_routes(
         &self,
         search: String,
-    ) -> Result<FindTransitRoutesResult, reqwest::Error> {
-        let mapped_routes = self
+    ) -> Result<FindTransitRoutesResult, MtaClientError> {
+        let res = self
             .client
             .get(&format!(
-                "https://bustime.mta.info/api/where/routes-for-agency/MTA%20NYCT.json?key={}",
-                self.api_key
+                "{}/api/where/routes-for-agency/MTA%20NYCT.json?key={}",
+                self.host, self.api_key
             ))
             .send()
-            .await?
-            .json::<GetRoutesResponse>()
-            .await?
-            .data
-            .list
-            .iter()
-            .filter(|d| d.shortName.to_lowercase().contains(&search.to_lowercase()))
-            .map(|d| FindTransitRoutesResultRoute {
-                id: d.id.clone(),
-                name: d.shortName.clone(),
-            })
-            .collect();
+            .await
+            .map_err(|e| MtaClientError {
+                message: e.to_string(),
+            })?;
+
+        let mapped_routes = match res.error_for_status() {
+            Ok(r) => r
+                .json::<GetRoutesResponse>()
+                .await
+                .map_err(|e| MtaClientError {
+                    message: e.to_string(),
+                })?
+                .data
+                .list
+                .iter()
+                .filter(|d| d.shortName.to_lowercase().contains(&search.to_lowercase()))
+                .map(|d| FindTransitRoutesResultRoute {
+                    id: d.id.clone(),
+                    name: d.shortName.clone(),
+                })
+                .collect(),
+            Err(e) => {
+                return Err(MtaClientError {
+                    message: e.to_string(),
+                })
+            }
+        };
 
         Ok(FindTransitRoutesResult {
             routes: mapped_routes,
         })
     }
 
-    pub async fn fetch_stop_info(&self) -> Result<Option<StopInformation>, reqwest::Error> {
-        let expected_arrival_time = match self.client.get(&format!("https://bustime.mta.info/api/siri/stop-monitoring.json?key={}&MonitoringRef=MTA_400080", self.api_key))
+    pub async fn fetch_stop_info(&self) -> Result<Option<StopInformation>, MtaClientError> {
+        let res = self
+            .client
+            .get(&format!(
+                "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef=MTA_400080",
+                self.host, self.api_key
+            ))
             .send()
-            .await?
-            .json::<response_formats::GetStopInfoResponse>().await?.Siri.ServiceDelivery.StopMonitoringDelivery
-            .get(0)
-            .and_then(|f| f.MonitoredStopVisit.get(0))
-            .and_then(|d|  d.MonitoredVehicleJourney
-                    .MonitoredCall
-                    .ExpectedArrivalTime
-                    .clone()
-            ) {
+            .await
+            .map_err(|e| MtaClientError {
+                message: e.to_string(),
+            })?;
+
+        let expected_arrival_time = match res.error_for_status() {
+            Ok(r) => match r
+                .json::<response_formats::GetStopInfoResponse>()
+                .await
+                .map_err(|e| MtaClientError {
+                    message: e.to_string(),
+                })?
+                .Siri
+                .ServiceDelivery
+                .StopMonitoringDelivery
+                .get(0)
+                .and_then(|f| f.MonitoredStopVisit.get(0))
+                .and_then(|d| {
+                    d.MonitoredVehicleJourney
+                        .MonitoredCall
+                        .ExpectedArrivalTime
+                        .clone()
+                }) {
                 Some(s) => s,
                 None => return Ok(None),
-            };
+            },
+            Err(e) => {
+                return Err(MtaClientError {
+                    message: e.to_string(),
+                })
+            }
+        };
 
         match DateTime::parse_from_rfc3339(&expected_arrival_time) {
             Ok(d) => {

@@ -1,40 +1,40 @@
 #![allow(non_snake_case)]
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct MonitoredCall {
     // pub AimedArrivalTime: String,
     pub ExpectedArrivalTime: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct MonitoredVehicleJourney {
     pub MonitoredCall: MonitoredCall,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct MonitoredStopVisit {
     pub MonitoredVehicleJourney: MonitoredVehicleJourney,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct StopMonitoringDelivery {
     pub MonitoredStopVisit: Vec<MonitoredStopVisit>,
     // pub ValidUntil: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ServiceDelivery {
     // pub ResponseTimestamp: String,
     pub StopMonitoringDelivery: Vec<StopMonitoringDelivery>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Siri {
     pub ServiceDelivery: ServiceDelivery,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct GetStopInfoResponse {
     pub Siri: Siri,
 }

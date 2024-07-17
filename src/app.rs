@@ -2,10 +2,10 @@ use crate::{routes::apply_routes, types::app_state::AppState, utils::mta_client:
 use axum::{routing::get, Router};
 use tower_http::cors::CorsLayer;
 
-pub fn gen_app(mta_key: &str) -> Router {
+pub fn gen_app(mta_host: &str, mta_key: &str) -> Router {
     let cors_middleware = CorsLayer::new();
     let state = AppState {
-        mta_client: MtaClient::new(mta_key.to_string()),
+        mta_client: MtaClient::new(mta_host.to_string(), mta_key.to_string()),
     };
 
     apply_routes(Router::new())
@@ -28,7 +28,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_world() {
-        let app = gen_app("key");
+        let app = gen_app("host", "key");
 
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())

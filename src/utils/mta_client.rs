@@ -1,8 +1,15 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 
 use crate::types::{
     mta_get_location_routes_response::GetRoutesForLocationResponse,
-    mta_get_routes_response::GetRoutesResponse, response_formats,
+    mta_get_routes_response::GetRoutesResponse,
+    mta_get_stops_for_route_response::{
+        GetStopsForRouteResponse, GetStopsForRouteResponseDataEntryStopGroupingStopGroup,
+        GetStopsForRouteResponseDataReferencesStop,
+    },
+    response_formats,
 };
 
 #[derive(Clone)]
@@ -34,6 +41,21 @@ pub struct FindTransitRoutesResultRoute {
 
 pub struct FindTransitRoutesResult {
     pub routes: Vec<FindTransitRoutesResultRoute>,
+}
+
+pub struct GetStopsForRouteResultGroupStop {
+    pub id: String,
+    pub name: String,
+}
+
+pub struct GetStopsForRouteResultGroup {
+    pub id: String,
+    pub name: String,
+    pub stops: Vec<GetStopsForRouteResultGroupStop>,
+}
+
+pub struct GetStopsForRouteResult {
+    pub groups: Vec<GetStopsForRouteResultGroup>,
 }
 
 pub struct MtaClientError {
@@ -93,6 +115,79 @@ impl MtaClient {
         Ok(TransitRoutes {
             routes: mapped_routes,
         })
+    }
+
+    pub async fn get_stops_for_route(
+        &self,
+        route: String,
+    ) -> Result<GetStopsForRouteResult, MtaClientError> {
+        let res = self
+            .client
+            .get(&format!(
+                "{}/api/where/stops-for-route/MTA%20NYCT_{}.json?key={}&includePolylines=false&version=2",
+                self.host, route, self.api_key
+            ))
+            .send()
+            .await
+            .map_err(|e| MtaClientError {
+                message: e.to_string(),
+            })?;
+
+        let json = match res.error_for_status() {
+            Ok(r) => r
+                .json::<GetStopsForRouteResponse>()
+                .await
+                .map_err(|e| MtaClientError {
+                    message: e.to_string(),
+                })?,
+            Err(e) => {
+                return Err(MtaClientError {
+                    message: e.to_string(),
+                })
+            }
+        };
+
+        let stops_by_id = json
+            .data
+            .references
+            .stops
+            .iter()
+            .map(|s| (s.id.clone(), s))
+            .collect::<HashMap<String, &GetStopsForRouteResponseDataReferencesStop>>();
+
+        let mut result = GetStopsForRouteResult { groups: vec![] };
+
+        for (_, stop_group) in json.data.entry.stopGroupings.iter().enumerate() {
+            for (_, stop_group_nested) in stop_group.stopGroups.iter().enumerate() {
+                let GetStopsForRouteResponseDataEntryStopGroupingStopGroup {
+                    id: grouping_id,
+                    name: grouping_name,
+                    stopIds: stop_ids,
+                } = stop_group_nested;
+
+                let mut group_stops: Vec<GetStopsForRouteResultGroupStop> = vec![];
+
+                for (_, stop_id) in stop_ids.iter().enumerate() {
+                    let stop_info = match stops_by_id.get(stop_id) {
+                        Some(i) => i,
+                        None => continue,
+                    };
+
+                    group_stops.push(GetStopsForRouteResultGroupStop {
+                        id: stop_id.clone(),
+                        name: stop_info.name.clone(),
+                    });
+                }
+
+                result.groups.push(GetStopsForRouteResultGroup {
+                    id: grouping_id.clone(),
+                    name: grouping_name.name.clone(),
+                    stops: group_stops,
+                });
+            }
+        }
+
+        Ok(result)
     }
 
     pub async fn get_routes(

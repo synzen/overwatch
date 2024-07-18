@@ -85,7 +85,6 @@ mod tests {
         body::{to_bytes, Body},
         http::{Request, StatusCode},
     };
-    use chrono::{Duration, Utc};
     use tower::ServiceExt;
 
     use crate::{
@@ -103,6 +102,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[traced_test]
     async fn get_response() {
         let mut mock_server = mockito::Server::new_async().await;
 
@@ -139,7 +139,7 @@ mod tests {
 
         // NOTE: "B1" is a parameter to the mock URL!
         let mock_server = mock_server
-            .mock("GET", "/api/where/stops-for-route/MTA%20NYCT_B1.json")
+            .mock("GET", "/api/where/stops-for-route/B1%2B.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response).unwrap())
             .match_query(mockito::Matcher::Regex(".*".to_string()))
@@ -149,7 +149,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/transit-routes-for-stops?route_id=B1")
+                    .uri("/transit-stops-for-route?route_id=B1%2B")
                     .header("content-type", "application/json")
                     .body(Body::empty())
                     .unwrap(),

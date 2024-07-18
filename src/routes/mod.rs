@@ -16,7 +16,7 @@ pub fn apply_routes(app: Router<AppState>) -> Router<AppState> {
         get(get_transit_routes::get_transit_routes),
     )
     .route(
-        "/transit-routes-for-stops",
+        "/transit-stops-for-route",
         get(get_transit_stops_for_route::get_transit_stops_for_route),
     )
 }

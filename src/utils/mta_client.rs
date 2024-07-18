@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use urlencoding::encode;
 
 use crate::types::{
     mta_get_location_routes_response::GetRoutesForLocationResponse,
@@ -124,8 +125,10 @@ impl MtaClient {
         let res = self
             .client
             .get(&format!(
-                "{}/api/where/stops-for-route/MTA%20NYCT_{}.json?key={}&includePolylines=false&version=2",
-                self.host, route, self.api_key
+                "{}/api/where/stops-for-route/{}.json?key={}&includePolylines=false&version=2",
+                self.host,
+                encode(&route),
+                self.api_key
             ))
             .send()
             .await

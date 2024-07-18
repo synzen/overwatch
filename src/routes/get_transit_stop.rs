@@ -41,12 +41,6 @@ pub async fn get_transit_stop(State(state): State<AppState>) -> Result<Response,
     result
 }
 
-#[derive(serde::Serialize)]
-pub struct StopInformation {
-    minutes: String,
-    path_id: String,
-}
-
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -103,15 +97,17 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/transit-stops/1")
+                    .header("content-type", "application/json")
                     .body(Body::empty())
                     .expect("Failed to create request"),
             )
             .await
             .expect("Failed to get response");
 
+        assert_eq!(response.status(), StatusCode::OK);
+
         mock_server.assert();
 
-        assert_eq!(response.status(), StatusCode::OK);
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body: StopResponse = serde_json::from_slice(&body)
             .expect("Failed to deserialize response body into StopResponse struct");

@@ -1,6 +1,6 @@
 use crate::{
     types::app_state::AppState,
-    utils::{app_error::AppError, validated_query::ValidatedQuery},
+    utils::{app_error::AppError, mta_client::MtaClientError, validated_query::ValidatedQuery},
 };
 use axum::{
     extract::State,
@@ -50,9 +50,14 @@ pub async fn get_transit_stops_for_route(
         .mta_client
         .get_stops_for_route(payload.route_id)
         .await
-        .map_err(|e| {
-            error!("Failed to fetch stops for route: {}", e);
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+        .map_err(|e| match e {
+            MtaClientError::ResourceNotFound => {
+                AppError::new(StatusCode::NOT_FOUND, "Route does not exist")
+            }
+            _ => {
+                error!("Failed to fetch stops for route: {}", e);
+                AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+            }
         })?
         .groups
         .iter()
@@ -85,7 +90,9 @@ mod tests {
         body::{to_bytes, Body},
         http::{Request, StatusCode},
     };
+    use serde_json::json;
     use tower::ServiceExt;
+    use tracing_test::traced_test;
 
     use crate::{
         app::gen_app,
@@ -171,5 +178,38 @@ mod tests {
         assert_eq!(body.data.groups[0].stops[0].name, "stop 1");
         assert_eq!(body.data.groups[0].stops[1].id, "s2");
         assert_eq!(body.data.groups[0].stops[1].name, "stop 2");
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_not_found() {
+        let mut mock_server = mockito::Server::new_async().await;
+
+        let app = gen_app(mock_server.url().as_str(), "key");
+
+        // NOTE: "B1" is a parameter to the mock URL!
+        let mock_server = mock_server
+            .mock("GET", "/api/where/stops-for-route/B1%2B.json")
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&json!({})).unwrap())
+            .with_status(404)
+            .match_query(mockito::Matcher::Regex(".*".to_string()))
+            .create_async()
+            .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/transit-stops-for-route?route_id=B1%2B")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        mock_server.assert();
     }
 }

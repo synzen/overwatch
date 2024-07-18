@@ -59,13 +59,17 @@ pub struct GetStopsForRouteResult {
     pub groups: Vec<GetStopsForRouteResultGroup>,
 }
 
-pub struct MtaClientError {
-    pub message: String,
+pub enum MtaClientError {
+    Internal(String),
+    ResourceNotFound,
 }
 
 impl std::fmt::Display for MtaClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "MtaClientError: {}", self.message)
+        match self {
+            MtaClientError::Internal(e) => write!(f, "Internal error: {}", e),
+            MtaClientError::ResourceNotFound => write!(f, "Resource not found"),
+        }
     }
 }
 
@@ -95,14 +99,14 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError {
-                message: e.to_string()
-            })?
+            .map_err(|e| MtaClientError::Internal(
+                e.to_string()
+            ))?
             .json::<GetRoutesForLocationResponse>()
             .await
-            .map_err(|e| MtaClientError {
-                message: e.to_string()
-            })?
+            .map_err(|e| MtaClientError::Internal(
+                 e.to_string()
+            ))?
             .data
             .routes
             .iter()
@@ -132,22 +136,21 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
 
         let json = match res.error_for_status() {
             Ok(r) => r
                 .json::<GetStopsForRouteResponse>()
                 .await
-                .map_err(|e| MtaClientError {
-                    message: e.to_string(),
-                })?,
-            Err(e) => {
-                return Err(MtaClientError {
-                    message: e.to_string(),
-                })
-            }
+                .map_err(|e| MtaClientError::Internal(e.to_string()))?,
+            Err(e) => match e.status() {
+                Some(s) if s == 404 => {
+                    return Err(MtaClientError::ResourceNotFound);
+                }
+                _ => {
+                    return Err(MtaClientError::Internal(e.to_string()));
+                }
+            },
         };
 
         let stops_by_id = json
@@ -205,17 +208,13 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
 
         let mapped_routes = match res.error_for_status() {
             Ok(r) => r
                 .json::<GetRoutesResponse>()
                 .await
-                .map_err(|e| MtaClientError {
-                    message: e.to_string(),
-                })?
+                .map_err(|e| MtaClientError::Internal(e.to_string()))?
                 .data
                 .list
                 .iter()
@@ -225,11 +224,7 @@ impl MtaClient {
                     name: d.shortName.clone(),
                 })
                 .collect(),
-            Err(e) => {
-                return Err(MtaClientError {
-                    message: e.to_string(),
-                })
-            }
+            Err(e) => return Err(MtaClientError::Internal(e.to_string())),
         };
 
         Ok(FindTransitRoutesResult {
@@ -246,17 +241,13 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
 
         let expected_arrival_time = match res.error_for_status() {
             Ok(r) => match r
                 .json::<response_formats::GetStopInfoResponse>()
                 .await
-                .map_err(|e| MtaClientError {
-                    message: e.to_string(),
-                })?
+                .map_err(|e| MtaClientError::Internal(e.to_string()))?
                 .Siri
                 .ServiceDelivery
                 .StopMonitoringDelivery
@@ -271,11 +262,7 @@ impl MtaClient {
                 Some(s) => s,
                 None => return Ok(None),
             },
-            Err(e) => {
-                return Err(MtaClientError {
-                    message: e.to_string(),
-                })
-            }
+            Err(e) => return Err(MtaClientError::Internal(e.to_string())),
         };
 
         match DateTime::parse_from_rfc3339(&expected_arrival_time) {

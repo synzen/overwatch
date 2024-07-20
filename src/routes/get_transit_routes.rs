@@ -42,7 +42,7 @@ pub async fn get_transit_routes(
 ) -> Result<Response, AppError> {
     let routes = state
         .mta_client
-        .get_routes(payload.search)
+        .get_routes(&payload.search)
         .await
         .map_err(|e| {
             error!("Failed to fetch transit routes: {}", e);

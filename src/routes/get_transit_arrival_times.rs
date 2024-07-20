@@ -1,4 +1,7 @@
-use crate::{types::app_state::AppState, utils::app_error::AppError};
+use crate::{
+    types::app_state::AppState,
+    utils::{app_error::AppError, validated_query::ValidatedQuery},
+};
 use axum::{
     extract::State,
     http::StatusCode,
@@ -7,17 +10,37 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use validator::Validate;
 
 #[derive(Serialize, Deserialize)]
-pub struct StopResponse {
+pub struct StopResponseDataArrival {
     pub expected_arrival_time: String,
     pub minutes_until_arrival: i64,
 }
 
-pub async fn get_transit_stop(State(state): State<AppState>) -> Result<Response, AppError> {
-    let result = state
+#[derive(Serialize, Deserialize)]
+pub struct StopResponseData {
+    pub arrival: Option<StopResponseDataArrival>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StopResponse {
+    pub data: StopResponseData,
+}
+
+#[derive(Validate, Deserialize)]
+pub struct GetTransitStopPayload {
+    #[validate(length(min = 1, message = "Must be at least 1 character"))]
+    pub stop_id: String,
+}
+
+pub async fn get_transit_arrival_times(
+    State(state): State<AppState>,
+    ValidatedQuery(payload): ValidatedQuery<GetTransitStopPayload>,
+) -> Result<Response, AppError> {
+    let result = match state
         .mta_client
-        .fetch_stop_info()
+        .fetch_stop_info(&payload.stop_id)
         .await
         .map_err(|e| {
             error!("Failed to fetch stop info: {}", e);
@@ -27,18 +50,30 @@ pub async fn get_transit_stop(State(state): State<AppState>) -> Result<Response,
             (
                 StatusCode::OK,
                 Json(StopResponse {
-                    expected_arrival_time: s.expected_arrival_time,
-                    minutes_until_arrival: s.minutes_until_arrival,
+                    data: StopResponseData {
+                        arrival: Some(StopResponseDataArrival {
+                            expected_arrival_time: s.expected_arrival_time,
+                            minutes_until_arrival: s.minutes_until_arrival,
+                        }),
+                    },
                 }),
             )
                 .into_response()
-        })
-        .ok_or_else(|| {
-            error!("No expected arrival time found");
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-        });
+        }) {
+        Some(r) => r,
+        None => {
+            error!("Stop info not found");
+            (
+                StatusCode::OK,
+                Json(StopResponse {
+                    data: StopResponseData { arrival: None },
+                }),
+            )
+                .into_response()
+        }
+    };
 
-    result
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -96,7 +131,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/transit-stops/1")
+                    .uri("/transit-arrival-times?stop_id=123")
                     .header("content-type", "application/json")
                     .body(Body::empty())
                     .expect("Failed to create request"),
@@ -112,8 +147,13 @@ mod tests {
         let body: StopResponse = serde_json::from_slice(&body)
             .expect("Failed to deserialize response body into StopResponse struct");
 
-        assert_eq!(body.minutes_until_arrival > 0, true);
-        assert_eq!(body.minutes_until_arrival < 4, true);
-        assert_eq!(body.expected_arrival_time, future_date.to_rfc3339());
+        match &body.data.arrival {
+            Some(arrival) => {
+                assert_eq!(arrival.minutes_until_arrival > 0, true);
+                assert_eq!(arrival.minutes_until_arrival < 4, true);
+                assert_eq!(arrival.expected_arrival_time, future_date.to_rfc3339());
+            }
+            None => panic!("Expected arrival time not found"),
+        }
     }
 }

@@ -2,14 +2,14 @@ use axum::{routing::get, Router};
 
 use crate::types::app_state::AppState;
 
+mod get_transit_arrival_times;
 mod get_transit_routes;
-mod get_transit_stop;
 mod get_transit_stops_for_route;
 
 pub fn apply_routes(app: Router<AppState>) -> Router<AppState> {
     app.route(
-        "/transit-stops/:id",
-        get(get_transit_stop::get_transit_stop),
+        "/transit-arrival-times",
+        get(get_transit_arrival_times::get_transit_arrival_times),
     )
     .route(
         "/transit-routes",

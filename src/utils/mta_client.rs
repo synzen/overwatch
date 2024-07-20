@@ -198,7 +198,7 @@ impl MtaClient {
 
     pub async fn get_routes(
         &self,
-        search: String,
+        search: &str,
     ) -> Result<FindTransitRoutesResult, MtaClientError> {
         let res = self
             .client
@@ -232,12 +232,15 @@ impl MtaClient {
         })
     }
 
-    pub async fn fetch_stop_info(&self) -> Result<Option<StopInformation>, MtaClientError> {
+    pub async fn fetch_stop_info(
+        &self,
+        stop_id: &str,
+    ) -> Result<Option<StopInformation>, MtaClientError> {
         let res = self
             .client
             .get(&format!(
-                "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef=MTA_400080",
-                self.host, self.api_key
+                "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef={}",
+                self.host, self.api_key, stop_id
             ))
             .send()
             .await

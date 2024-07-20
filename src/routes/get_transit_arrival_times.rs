@@ -61,16 +61,13 @@ pub async fn get_transit_arrival_times(
                 .into_response()
         }) {
         Some(r) => r,
-        None => {
-            error!("Stop info not found");
-            (
-                StatusCode::OK,
-                Json(StopResponse {
-                    data: StopResponseData { arrival: None },
-                }),
-            )
-                .into_response()
-        }
+        None => (
+            StatusCode::OK,
+            Json(StopResponse {
+                data: StopResponseData { arrival: None },
+            }),
+        )
+            .into_response(),
     };
 
     Ok(result)

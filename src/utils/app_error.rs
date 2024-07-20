@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Serialize;
 
+#[derive(Debug)]
 pub struct AppError {
     pub code: StatusCode,
     pub message: String,

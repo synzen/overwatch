@@ -24,6 +24,6 @@ FROM rust:1.79-slim
 
 # copy the build artifact from the build stage
 COPY --from=build /overwatch-api/target/release/overwatch-api .
-
+EXPOSE 8000
 # set the startup command to run your binary
 CMD ["./overwatch-api"]

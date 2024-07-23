@@ -3,10 +3,8 @@ use axum::{
     body::Body,
     response::{AppendHeaders, IntoResponse, Response},
 };
-use axum_macros::debug_handler;
 use tokio::fs::File;
 
-#[debug_handler]
 pub async fn get_audio() -> Result<Response, AppError> {
     let path = "src/media/two_minutes.wav";
     let audio = File::open(path).await.unwrap();

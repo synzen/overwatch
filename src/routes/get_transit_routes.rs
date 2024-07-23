@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+#[cfg(test)]
 use axum_macros::debug_handler;
 use serde::{Deserialize, Serialize};
 use tracing::error;
@@ -35,7 +36,7 @@ pub struct GetTransitRoutesResponse {
     pub data: GetTransitRoutesResponseData,
 }
 
-#[debug_handler]
+#[cfg_attr(test, debug_handler)]
 pub async fn get_transit_routes(
     State(state): State<AppState>,
     ValidatedQuery(payload): ValidatedQuery<GetTransitRoutesPayload>,
@@ -86,7 +87,7 @@ mod tests {
     async fn get_response() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key");
+        let app = gen_app(mock_server.url().as_str(), "key", None);
 
         let mock_response = GetRoutesResponse {
             data: GetRoutesResponseData {

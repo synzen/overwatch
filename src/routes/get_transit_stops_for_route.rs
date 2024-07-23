@@ -113,7 +113,7 @@ mod tests {
     async fn get_response() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key");
+        let app = gen_app(mock_server.url().as_str(), "key", None);
 
         let mock_response = GetStopsForRouteResponse {
             data: GetStopsForRouteResponseData {
@@ -185,7 +185,7 @@ mod tests {
     async fn test_not_found() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key");
+        let app = gen_app(mock_server.url().as_str(), "key", None);
 
         // NOTE: "B1" is a parameter to the mock URL!
         let mock_server = mock_server

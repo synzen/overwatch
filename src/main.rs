@@ -4,6 +4,7 @@ mod utils;
 use std::env;
 use tracing::info;
 mod app;
+mod middlewares;
 
 #[tokio::main]
 async fn main() {
@@ -17,6 +18,10 @@ async fn main() {
     let app = app::gen_app(
         "https://bustime.mta.info",
         &env::var("MTA_KEY").expect("MTA API key is expected"),
+        match &env::var("AUTH_KEY") {
+            Ok(auth_key) => Some(auth_key.to_string()),
+            Err(_) => None,
+        },
     );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();

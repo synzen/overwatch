@@ -29,6 +29,7 @@ pub struct GetTransitStopsForRouteResponseGroupStop {
 pub struct GetTransitStopsForRouteResponseGroup {
     pub id: String,
     pub name: String,
+    pub route_name: String,
     pub stops: Vec<GetTransitStopsForRouteResponseGroupStop>,
 }
 
@@ -64,6 +65,7 @@ pub async fn get_transit_stops_for_route(
         .map(|s| GetTransitStopsForRouteResponseGroup {
             id: s.id.clone(),
             name: s.name.clone(),
+            route_name: s.route_name.clone(),
             stops: s
                 .stops
                 .iter()
@@ -95,7 +97,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        app::gen_app,
+        app::{gen_app, AppConfig},
         types::mta_get_stops_for_route_response::{
             GetStopsForRouteResponse, GetStopsForRouteResponseData,
             GetStopsForRouteResponseDataEntry, GetStopsForRouteResponseDataEntryStopGrouping,
@@ -113,7 +115,13 @@ mod tests {
     async fn get_response() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key", None);
+        let app = gen_app(AppConfig {
+            mta_host: mock_server.url(),
+            mta_key: "key".to_string(),
+            tomtom_key: "key".to_string(),
+            tomtom_host: "host".to_string(),
+            auth_key: None,
+        });
 
         let mock_response = GetStopsForRouteResponse {
             data: GetStopsForRouteResponseData {
@@ -140,6 +148,7 @@ mod tests {
                             name: "stop 2".to_string(),
                         },
                     ],
+                    routes: vec![],
                 },
             },
         };
@@ -185,7 +194,13 @@ mod tests {
     async fn test_not_found() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key", None);
+        let app = gen_app(AppConfig {
+            mta_host: mock_server.url(),
+            mta_key: "key".to_string(),
+            tomtom_key: "key".to_string(),
+            tomtom_host: "host".to_string(),
+            auth_key: None,
+        });
 
         // NOTE: "B1" is a parameter to the mock URL!
         let mock_server = mock_server

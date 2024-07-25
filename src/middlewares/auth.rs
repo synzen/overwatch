@@ -14,7 +14,7 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Result<Response, AppError> {
     match state.auth_key {
-        Some(ref auth_key) => match headers.get("authorization") {
+        Some(ref auth_key) => match headers.get("Temp-Authorization") {
             Some(header) if header == auth_key => Ok(next.run(request).await),
             _ => Err(AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized")),
         },

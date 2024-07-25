@@ -1,14 +1,37 @@
 use crate::{
-    middlewares::auth::auth_middleware, routes::apply_routes, types::app_state::AppState,
-    utils::mta_client::MtaClient,
+    middlewares::auth::auth_middleware,
+    routes::apply_routes,
+    types::app_state::AppState,
+    utils::mta_client::{MtaClient, MtaClientConfig},
 };
 use axum::{middleware, routing::get, Router};
 use tower_http::cors::CorsLayer;
 
-pub fn gen_app(mta_host: &str, mta_key: &str, auth_key: Option<String>) -> Router {
+pub struct AppConfig {
+    pub mta_host: String,
+    pub mta_key: String,
+    pub tomtom_key: String,
+    pub tomtom_host: String,
+    pub auth_key: Option<String>,
+}
+
+pub fn gen_app(
+    AppConfig {
+        auth_key,
+        mta_host,
+        mta_key,
+        tomtom_host,
+        tomtom_key,
+    }: AppConfig,
+) -> Router {
     let cors_middleware = CorsLayer::new();
     let state = AppState {
-        mta_client: MtaClient::new(mta_host.to_string(), mta_key.to_string()),
+        mta_client: MtaClient::new(MtaClientConfig {
+            host: mta_host,
+            api_key: mta_key,
+            tomtom_host,
+            tomtom_key: tomtom_key,
+        }),
         auth_key,
     };
 
@@ -36,7 +59,13 @@ mod tests {
 
     #[tokio::test]
     async fn hello_world() {
-        let app = gen_app("host", "key", None);
+        let app = gen_app(AppConfig {
+            mta_host: "host".to_string(),
+            mta_key: "key".to_string(),
+            tomtom_key: "key".to_string(),
+            tomtom_host: "host".to_string(),
+            auth_key: None,
+        });
 
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())

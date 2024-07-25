@@ -1,22 +1,31 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use ::futures::future::try_join_all;
 use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
 use crate::types::{
-    mta_get_location_routes_response::GetRoutesForLocationResponse,
     mta_get_routes_response::GetRoutesResponse,
+    mta_get_stops_at_location_response::GetStopsAtLocationResponse,
     mta_get_stops_for_route_response::{
         GetStopsForRouteResponse, GetStopsForRouteResponseDataEntryStopGroupingStopGroup,
         GetStopsForRouteResponseDataReferencesStop,
     },
     response_formats,
+    tomtom_search_response::TomTomSearchResponse,
 };
 
 #[derive(Clone)]
+pub struct MtaClientConfig {
+    pub host: String,
+    pub api_key: String,
+    pub tomtom_key: String,
+    pub tomtom_host: String,
+}
+
+#[derive(Clone)]
 pub struct MtaClient {
-    host: String,
-    api_key: String,
+    config: MtaClientConfig,
     client: reqwest::Client,
 }
 
@@ -25,14 +34,8 @@ pub struct StopInformation {
     pub minutes_until_arrival: i64,
 }
 
-pub struct TransitRoute {
-    pub name: String,
-    pub description: String,
-    pub id: String,
-}
-
-pub struct TransitRoutes {
-    pub routes: Vec<TransitRoute>,
+pub struct GetGroupedStopsAtLocation {
+    pub groups: Vec<GetStopsForRouteResultGroup>,
 }
 
 pub struct FindTransitRoutesResultRoute {
@@ -52,6 +55,7 @@ pub struct GetStopsForRouteResultGroupStop {
 pub struct GetStopsForRouteResultGroup {
     pub id: String,
     pub name: String,
+    pub route_name: String,
     pub stops: Vec<GetStopsForRouteResultGroupStop>,
 }
 
@@ -74,52 +78,123 @@ impl std::fmt::Display for MtaClientError {
 }
 
 impl MtaClient {
-    pub fn new(host: String, api_key: String) -> Self {
+    pub fn new(config: MtaClientConfig) -> Self {
         let request_client = reqwest::Client::new();
 
         MtaClient {
-            host,
-            api_key,
+            config,
             client: request_client,
         }
     }
 
-    pub async fn _get_routes_at_location(
+    pub async fn get_stops_at_location(
         &self,
-        latitude: String,
-        longitude: String,
-    ) -> Result<TransitRoutes, MtaClientError> {
-        let mapped_routes = self
+        search: String,
+    ) -> Result<GetGroupedStopsAtLocation, MtaClientError> {
+        let geocoded = self
             .client
             .get(&format!(
-                "https://bustime.mta.info/api/where/routes-for-location.json?lat={}&lon={}&latSpan=0.005&lonSpan=0.005&key={}",
-                latitude,
-                longitude,
-                self.api_key
+                "{}/search/2/geocode/{}.json?key={}&limit=1",
+                self.config.tomtom_host,
+                encode(&search),
+                self.config.tomtom_key
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError::Internal(
-                e.to_string()
-            ))?
-            .json::<GetRoutesForLocationResponse>()
+            .map_err(|e| {
+                MtaClientError::Internal(format!(
+                    "Failed to send tomtom api request: {}",
+                    e.to_string()
+                ))
+            })?
+            .json::<TomTomSearchResponse>()
             .await
-            .map_err(|e| MtaClientError::Internal(
-                 e.to_string()
-            ))?
-            .data
-            .routes
-            .iter()
-            .map(|d| TransitRoute {
-                name: d.shortName.clone(),
-                description: d.description.clone(),
-                id: d.id.clone(),
-            })
-            .collect();
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
 
-        Ok(TransitRoutes {
-            routes: mapped_routes,
-        })
+        let first_match = match geocoded.results.get(0) {
+            Some(r) => r,
+            None => {
+                return Ok(GetGroupedStopsAtLocation { groups: Vec::new() });
+            }
+        };
+
+        let routes_for_location = self
+            .client
+            .get(&format!(
+            "{}/api/where/stops-for-location.json?lat={}&lon={}&latSpan=0.005&lonSpan=0.005&key={}",
+            self.config.host,
+            first_match.position.lat,
+            first_match.position.lon,
+            self.config.api_key
+        ))
+            .send()
+            .await
+            .map_err(|e| {
+                MtaClientError::Internal(format!(
+                    "Failed to send stops for location API request: {}",
+                    e.to_string()
+                ))
+            })?
+            .json::<GetStopsAtLocationResponse>()
+            .await
+            .map_err(|e| {
+                MtaClientError::Internal(format!(
+                    "Failed to parse json for stops-for-location request: {}",
+                    e.to_string()
+                ))
+            })?;
+
+        let route_ids: HashSet<String> =
+            routes_for_location
+                .data
+                .stops
+                .iter()
+                .fold(HashSet::new(), |mut acc, stop| {
+                    stop.routes.iter().for_each(|r| {
+                        acc.insert(r.id.clone());
+                    });
+                    acc
+                });
+
+        let stop_ids: HashSet<String> =
+            routes_for_location
+                .data
+                .stops
+                .iter()
+                .fold(HashSet::new(), |mut acc, stop| {
+                    acc.insert(stop.id.clone());
+                    acc
+                });
+
+        let mut fetches = Vec::new();
+        for route_id in route_ids {
+            fetches.push(self.get_stops_for_route(route_id));
+        }
+
+        let mut result = GetGroupedStopsAtLocation { groups: Vec::new() };
+
+        try_join_all(fetches).await?.iter().for_each(|r| {
+            r.groups.iter().for_each(|g| {
+                let group = GetStopsForRouteResultGroup {
+                    id: g.id.clone(),
+                    name: g.name.clone(),
+                    route_name: g.route_name.clone(),
+                    stops: g
+                        .stops
+                        .iter()
+                        .filter(|s| stop_ids.contains(&s.id))
+                        .map(|s| GetStopsForRouteResultGroupStop {
+                            id: s.id.clone(),
+                            name: s.name.clone(),
+                        })
+                        .collect(),
+                };
+
+                result.groups.push(group);
+            });
+        });
+
+        Ok(result)
     }
 
     pub async fn get_stops_for_route(
@@ -130,9 +205,9 @@ impl MtaClient {
             .client
             .get(&format!(
                 "{}/api/where/stops-for-route/{}.json?key={}&includePolylines=false&version=2",
-                self.host,
+                self.config.host,
                 encode(&route),
-                self.api_key
+                self.config.api_key
             ))
             .send()
             .await
@@ -152,6 +227,15 @@ impl MtaClient {
                 }
             },
         };
+
+        let route_name = json
+            .data
+            .references
+            .routes
+            .iter()
+            .find(|r| r.id == route)
+            .map(|r| r.shortName.clone())
+            .unwrap_or("".to_string());
 
         let stops_by_id = json
             .data
@@ -189,6 +273,7 @@ impl MtaClient {
                     id: grouping_id.clone(),
                     name: grouping_name.name.clone(),
                     stops: group_stops,
+                    route_name: route_name.clone(),
                 });
             }
         }
@@ -204,7 +289,7 @@ impl MtaClient {
             .client
             .get(&format!(
                 "{}/api/where/routes-for-agency/MTA%20NYCT.json?key={}",
-                self.host, self.api_key
+                self.config.host, self.config.api_key
             ))
             .send()
             .await
@@ -240,7 +325,7 @@ impl MtaClient {
             .client
             .get(&format!(
                 "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef={}",
-                self.host, self.api_key, stop_id
+                self.config.host, self.config.api_key, stop_id
             ))
             .send()
             .await

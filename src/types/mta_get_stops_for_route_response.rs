@@ -8,8 +8,15 @@ pub struct GetStopsForRouteResponseDataReferencesStop {
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct GetStopsForRouteResponseDataReferencesRoute {
+    pub id: String,
+    pub shortName: String,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct GetStopsForRouteResponseDataReferences {
     pub stops: Vec<GetStopsForRouteResponseDataReferencesStop>,
+    pub routes: Vec<GetStopsForRouteResponseDataReferencesRoute>,
 }
 
 #[derive(Deserialize, Serialize)]

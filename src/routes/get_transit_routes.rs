@@ -75,7 +75,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        app::gen_app,
+        app::{gen_app, AppConfig},
         types::mta_get_routes_response::{
             GetRoutesResponse, GetRoutesResponseData, GetRoutesResponseRoute,
         },
@@ -87,7 +87,13 @@ mod tests {
     async fn get_response() {
         let mut mock_server = mockito::Server::new_async().await;
 
-        let app = gen_app(mock_server.url().as_str(), "key", None);
+        let app = gen_app(AppConfig {
+            mta_host: mock_server.url(),
+            mta_key: "key".to_string(),
+            tomtom_key: "key".to_string(),
+            tomtom_host: "host".to_string(),
+            auth_key: None,
+        });
 
         let mock_response = GetRoutesResponse {
             data: GetRoutesResponseData {

@@ -12,11 +12,6 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use validator::Validate;
 
-use super::get_transit_stops_for_route::{
-    GetTransitStopsForRouteResponseData, GetTransitStopsForRouteResponseGroup,
-    GetTransitStopsForRouteResponseGroupStop,
-};
-
 #[derive(Validate, Deserialize)]
 pub struct GetTransitStopsAtLocation {
     #[validate(length(min = 1, message = "Must be at least 1 character"))]
@@ -24,8 +19,31 @@ pub struct GetTransitStopsAtLocation {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct GetTransitStopsForRouteResponse {
-    pub data: GetTransitStopsForRouteResponseData,
+pub struct GetTransitStopsAtLocationResponseRouteStop {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetTransitStopsAtLocationResponseRouteGrouping {
+    pub name: String,
+    pub stops: Vec<GetTransitStopsAtLocationResponseRouteStop>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetTransitStopsAtLocationResponseRoute {
+    pub name: String,
+    pub groupings: Vec<GetTransitStopsAtLocationResponseRouteGrouping>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetTransitStopsAtLocationResponseData {
+    pub routes: Vec<GetTransitStopsAtLocationResponseRoute>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetTransitStopsAtLocationResponse {
+    pub data: GetTransitStopsAtLocationResponseData,
 }
 
 pub async fn get_transit_stops_at_location(
@@ -40,30 +58,54 @@ pub async fn get_transit_stops_at_location(
             error!("Failed to fetch stops at location: {}", e);
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
         })?
-        .groups
-        .iter()
-        .map(|s| GetTransitStopsForRouteResponseGroup {
-            id: s.id.clone(),
-            name: s.name.clone(),
-            route_name: s.route_name.clone(),
-            stops: s
-                .stops
-                .iter()
-                .map(|stop| GetTransitStopsForRouteResponseGroupStop {
-                    id: stop.id.clone(),
-                    name: stop.name.clone(),
-                })
-                .collect(),
-        })
-        .collect::<Vec<GetTransitStopsForRouteResponseGroup>>();
+        .groups;
 
-    Ok((
-        StatusCode::OK,
-        Json(GetTransitStopsForRouteResponse {
-            data: GetTransitStopsForRouteResponseData { groups },
-        }),
-    )
-        .into_response())
+    let mut route_names = groups
+        .iter()
+        .map(|g| g.route_name.clone())
+        .collect::<Vec<String>>();
+
+    route_names.sort();
+    route_names.dedup();
+
+    let mut res = GetTransitStopsAtLocationResponse {
+        data: GetTransitStopsAtLocationResponseData {
+            routes: Vec::<GetTransitStopsAtLocationResponseRoute>::new(),
+        },
+    };
+
+    for route_name in &route_names {
+        let mut new_route = GetTransitStopsAtLocationResponseRoute {
+            name: route_name.clone(),
+            groupings: Vec::<GetTransitStopsAtLocationResponseRouteGrouping>::new(),
+        };
+
+        for g in &groups {
+            if !g.route_name.eq(route_name) {
+                continue;
+            }
+
+            let mut grouping = GetTransitStopsAtLocationResponseRouteGrouping {
+                name: g.name.clone(),
+                stops: Vec::<GetTransitStopsAtLocationResponseRouteStop>::new(),
+            };
+
+            for stop in &g.stops {
+                grouping
+                    .stops
+                    .push(GetTransitStopsAtLocationResponseRouteStop {
+                        id: stop.id.clone(),
+                        name: stop.name.clone(),
+                    });
+            }
+
+            new_route.groupings.push(grouping);
+        }
+
+        res.data.routes.push(new_route);
+    }
+
+    Ok((StatusCode::OK, Json(res)).into_response())
 }
 
 #[cfg(test)]

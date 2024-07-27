@@ -10,8 +10,6 @@ use tower_http::cors::CorsLayer;
 pub struct AppConfig {
     pub mta_host: String,
     pub mta_key: String,
-    pub tomtom_key: String,
-    pub tomtom_host: String,
     pub auth_key: Option<String>,
 }
 
@@ -20,8 +18,6 @@ pub fn gen_app(
         auth_key,
         mta_host,
         mta_key,
-        tomtom_host,
-        tomtom_key,
     }: AppConfig,
 ) -> Router {
     let cors_middleware = CorsLayer::new();
@@ -29,8 +25,6 @@ pub fn gen_app(
         mta_client: MtaClient::new(MtaClientConfig {
             host: mta_host,
             api_key: mta_key,
-            tomtom_host,
-            tomtom_key: tomtom_key,
         }),
         auth_key,
     };
@@ -62,8 +56,6 @@ mod tests {
         let app = gen_app(AppConfig {
             mta_host: "host".to_string(),
             mta_key: "key".to_string(),
-            tomtom_key: "key".to_string(),
-            tomtom_host: "host".to_string(),
             auth_key: None,
         });
 

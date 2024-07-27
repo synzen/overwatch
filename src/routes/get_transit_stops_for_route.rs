@@ -118,8 +118,6 @@ mod tests {
         let app = gen_app(AppConfig {
             mta_host: mock_server.url(),
             mta_key: "key".to_string(),
-            tomtom_key: "key".to_string(),
-            tomtom_host: "host".to_string(),
             auth_key: None,
         });
 
@@ -197,8 +195,6 @@ mod tests {
         let app = gen_app(AppConfig {
             mta_host: mock_server.url(),
             mta_key: "key".to_string(),
-            tomtom_key: "key".to_string(),
-            tomtom_host: "host".to_string(),
             auth_key: None,
         });
 

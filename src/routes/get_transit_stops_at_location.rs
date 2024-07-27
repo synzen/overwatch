@@ -1,5 +1,5 @@
 use crate::{
-    types::app_state::AppState,
+    types::{app_state::AppState, lat_long_location::LatLongLocation},
     utils::{app_error::AppError, validated_query::ValidatedQuery},
 };
 use axum::{
@@ -14,8 +14,8 @@ use validator::Validate;
 
 #[derive(Validate, Deserialize)]
 pub struct GetTransitStopsAtLocation {
-    #[validate(length(min = 1, message = "Must be at least 1 character"))]
-    pub query: String,
+    pub lat: String,
+    pub lon: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -52,7 +52,10 @@ pub async fn get_transit_stops_at_location(
 ) -> Result<Response, AppError> {
     let groups = state
         .mta_client
-        .get_stops_at_location(payload.query)
+        .get_stops_at_location(LatLongLocation {
+            latitude: payload.lat,
+            longitude: payload.lon,
+        })
         .await
         .map_err(|e| {
             error!("Failed to fetch stops at location: {}", e);
@@ -116,7 +119,6 @@ mod tests {
     };
     use tower::ServiceExt;
     use tracing_test::traced_test;
-    use urlencoding::encode;
 
     use crate::{
         app::{gen_app, AppConfig},
@@ -129,10 +131,6 @@ mod tests {
                 GetStopsForRouteResponse, GetStopsForRouteResponseData,
                 GetStopsForRouteResponseDataEntry, GetStopsForRouteResponseDataReferences,
             },
-            tomtom_search_response::{
-                TomTomSearchResponse, TomTomSearchResponseResult,
-                TomTomSearchResponseResultPosition,
-            },
         },
     };
 
@@ -144,19 +142,8 @@ mod tests {
         let app = gen_app(AppConfig {
             mta_host: mock_server.url(),
             mta_key: "key".to_string(),
-            tomtom_key: "key".to_string(),
-            tomtom_host: mock_server.url(),
             auth_key: None,
         });
-
-        let search = encode("search");
-
-        let tomtom_response = TomTomSearchResponse {
-            results: vec![TomTomSearchResponseResult {
-                id: "1".to_string(),
-                position: TomTomSearchResponseResultPosition { lat: 1.0, lon: 1.0 },
-            }],
-        };
 
         let stops_for_location_response = GetStopsAtLocationResponse {
             data: GetStopsAtLocationResponseStops {
@@ -182,17 +169,6 @@ mod tests {
         };
 
         mock_server
-            .mock(
-                "GET",
-                mockito::Matcher::Regex(format!("/search/2/geocode/{}.json", search).to_string()), //    "/search/2/geocode/B1%2B.json"
-            )
-            .with_header("content-type", "application/json")
-            .with_body(serde_json::to_string(&tomtom_response).unwrap())
-            .match_query(mockito::Matcher::Regex(".*".to_string()))
-            .create_async()
-            .await;
-
-        mock_server
             .mock("GET", "/api/where/stops-for-location.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&stops_for_location_response).unwrap())
@@ -216,7 +192,10 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri(format!("/transit-stops-at-location?query={}", search))
+                    .uri(format!(
+                        "/transit-stops-at-location?lat={}&lon={}",
+                        1.0, 1.0
+                    ))
                     .header("content-type", "application/json")
                     .body(Body::empty())
                     .unwrap(),

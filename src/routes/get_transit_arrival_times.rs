@@ -14,63 +14,61 @@ use validator::Validate;
 
 #[derive(Serialize, Deserialize)]
 pub struct StopResponseDataArrival {
-    pub expected_arrival_time: String,
-    pub minutes_until_arrival: i64,
+    pub expected_arrival_time: Option<String>,
+    pub minutes_until_arrival: Option<i64>,
+    pub stop_id: String,
+    pub route_label: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StopResponseData {
-    pub arrival: Option<StopResponseDataArrival>,
+pub struct TransitArrivalsData {
+    pub arrivals: Vec<StopResponseDataArrival>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StopResponse {
-    pub data: StopResponseData,
+pub struct TransitArrivalsResponse {
+    pub data: TransitArrivalsData,
 }
 
 #[derive(Validate, Deserialize)]
 pub struct GetTransitStopPayload {
     #[validate(length(min = 1, message = "Must be at least 1 character"))]
-    pub stop_id: String,
+    pub stop_ids: String,
 }
 
 pub async fn get_transit_arrival_times(
     State(state): State<AppState>,
     ValidatedQuery(payload): ValidatedQuery<GetTransitStopPayload>,
 ) -> Result<Response, AppError> {
-    let result = match state
+    let stop_ids = payload.stop_ids.split(",").collect::<Vec<&str>>();
+
+    match state
         .mta_client
-        .fetch_stop_info(&payload.stop_id)
+        .fetch_multiple_stop_arrivals(stop_ids)
         .await
         .map_err(|e| {
             error!("Failed to fetch stop info: {}", e);
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-        })?
-        .map(|s| {
-            (
-                StatusCode::OK,
-                Json(StopResponse {
-                    data: StopResponseData {
-                        arrival: Some(StopResponseDataArrival {
-                            expected_arrival_time: s.expected_arrival_time,
-                            minutes_until_arrival: s.minutes_until_arrival,
-                        }),
-                    },
-                }),
-            )
-                .into_response()
         }) {
-        Some(r) => r,
-        None => (
-            StatusCode::OK,
-            Json(StopResponse {
-                data: StopResponseData { arrival: None },
-            }),
-        )
-            .into_response(),
-    };
+        Ok(v) => {
+            let response_json = TransitArrivalsResponse {
+                data: TransitArrivalsData {
+                    arrivals: v
+                        .iter()
+                        .map(|s| StopResponseDataArrival {
+                            stop_id: s.stop_id.clone(),
+                            expected_arrival_time: s.expected_arrival_time.clone(),
+                            minutes_until_arrival: s.minutes_until_arrival,
+                            route_label: s.route_label.clone(),
+                        })
+                        .collect::<Vec<StopResponseDataArrival>>(),
+                },
+            };
 
-    Ok(result)
+            Ok((StatusCode::OK, Json(response_json)).into_response())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -112,6 +110,7 @@ mod tests {
                                 MonitoredCall: MonitoredCall {
                                     ExpectedArrivalTime: Some(future_date.to_rfc3339()),
                                 },
+                                PublishedLineName: "A".to_string(),
                             },
                         }]),
                     }]),
@@ -119,20 +118,44 @@ mod tests {
             },
         };
 
-        let mock_server = mock_server
+        let mock1 = mock_server
             .mock("GET", "/api/siri/stop-monitoring.json")
             .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::to_string(&mock_response).expect("Failed to serialize test response"),
-            )
-            .match_query(mockito::Matcher::Regex(".*".to_string()))
+            .with_body(serde_json::to_string(&mock_response).unwrap())
+            .match_query(mockito::Matcher::Regex(".*123.*".to_string()))
+            .create_async()
+            .await;
+
+        let future_date2 = Utc::now() + Duration::minutes(10);
+
+        let mock_response2 = GetStopInfoResponse {
+            Siri: Siri {
+                ServiceDelivery: ServiceDelivery {
+                    StopMonitoringDelivery: Vec::from([StopMonitoringDelivery {
+                        MonitoredStopVisit: Vec::from([MonitoredStopVisit {
+                            MonitoredVehicleJourney: MonitoredVehicleJourney {
+                                MonitoredCall: MonitoredCall {
+                                    ExpectedArrivalTime: Some(future_date2.to_rfc3339()),
+                                },
+                                PublishedLineName: "B".to_string(),
+                            },
+                        }]),
+                    }]),
+                },
+            },
+        };
+        let mock2 = mock_server
+            .mock("GET", "/api/siri/stop-monitoring.json")
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_response2).unwrap())
+            .match_query(mockito::Matcher::Regex(".*abc.*".to_string()))
             .create_async()
             .await;
 
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/transit-arrival-times?stop_id=123")
+                    .uri("/transit-arrival-times?stop_ids=123,abc")
                     .header("content-type", "application/json")
                     .body(Body::empty())
                     .expect("Failed to create request"),
@@ -142,19 +165,33 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        mock_server.assert();
+        mock1.assert();
+        mock2.assert();
 
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body: StopResponse = serde_json::from_slice(&body)
-            .expect("Failed to deserialize response body into StopResponse struct");
+        let body: TransitArrivalsResponse = serde_json::from_slice(&body)
+            .expect("Failed to deserialize response body into TransitArrivalsResponse struct");
 
-        match &body.data.arrival {
-            Some(arrival) => {
-                assert_eq!(arrival.minutes_until_arrival > 0, true);
-                assert_eq!(arrival.minutes_until_arrival < 4, true);
-                assert_eq!(arrival.expected_arrival_time, future_date.to_rfc3339());
-            }
-            None => panic!("Expected arrival time not found"),
-        }
+        assert_eq!(body.data.arrivals.len(), 2);
+
+        match body.data.arrivals.iter().any(|arrival| {
+            arrival.minutes_until_arrival > Some(0)
+                && arrival.minutes_until_arrival < Some(4)
+                && arrival.expected_arrival_time == Some(future_date.to_rfc3339())
+                && arrival.stop_id == "123"
+        }) {
+            true => {}
+            false => panic!("Expected arrival time for 123 not found"),
+        };
+
+        match body.data.arrivals.iter().any(|arrival| {
+            arrival.minutes_until_arrival > Some(4)
+                && arrival.minutes_until_arrival < Some(12)
+                && arrival.expected_arrival_time == Some(future_date2.to_rfc3339())
+                && arrival.stop_id == "abc"
+        }) {
+            true => {}
+            false => panic!("Expected arrival time for abc not found"),
+        };
     }
 }

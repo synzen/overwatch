@@ -12,7 +12,7 @@ use crate::types::{
         GetStopsForRouteResponse, GetStopsForRouteResponseDataEntryStopGroupingStopGroup,
         GetStopsForRouteResponseDataReferencesStop,
     },
-    response_formats,
+    response_formats::{self, GetStopInfoResponse},
 };
 
 #[derive(Clone)]
@@ -28,8 +28,10 @@ pub struct MtaClient {
 }
 
 pub struct StopInformation {
-    pub expected_arrival_time: String,
-    pub minutes_until_arrival: i64,
+    pub expected_arrival_time: Option<String>,
+    pub minutes_until_arrival: Option<i64>,
+    pub stop_id: String,
+    pub route_label: String,
 }
 
 pub struct GetGroupedStopsAtLocation {
@@ -291,8 +293,8 @@ impl MtaClient {
     pub async fn fetch_stop_info(
         &self,
         stop_id: &str,
-    ) -> Result<Option<StopInformation>, MtaClientError> {
-        let res = self
+    ) -> Result<Vec<StopInformation>, MtaClientError> {
+        let response = self
             .client
             .get(&format!(
                 "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef={}",
@@ -300,40 +302,81 @@ impl MtaClient {
             ))
             .send()
             .await
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .json::<GetStopInfoResponse>()
+            .await
             .map_err(|e| MtaClientError::Internal(e.to_string()))?;
 
-        let expected_arrival_time = match res.error_for_status() {
-            Ok(r) => match r
-                .json::<response_formats::GetStopInfoResponse>()
-                .await
-                .map_err(|e| MtaClientError::Internal(e.to_string()))?
-                .Siri
-                .ServiceDelivery
-                .StopMonitoringDelivery
-                .get(0)
-                .and_then(|f| f.MonitoredStopVisit.get(0))
-                .and_then(|d| {
-                    d.MonitoredVehicleJourney
-                        .MonitoredCall
-                        .ExpectedArrivalTime
-                        .clone()
-                }) {
-                Some(s) => s,
-                None => return Ok(None),
-            },
-            Err(e) => return Err(MtaClientError::Internal(e.to_string())),
-        };
+        let stop_monitoring_delivery = response.Siri.ServiceDelivery.StopMonitoringDelivery.first();
 
-        match DateTime::parse_from_rfc3339(&expected_arrival_time) {
-            Ok(d) => {
-                let delta = d.signed_duration_since(Utc::now());
+        let mut output = Vec::<StopInformation>::new();
 
-                Ok(Some(StopInformation {
+        if let Some(delivery) = stop_monitoring_delivery {
+            for stop_visit in delivery.MonitoredStopVisit.iter() {
+                let minutes_until_arrival = match &stop_visit
+                    .MonitoredVehicleJourney
+                    .MonitoredCall
+                    .ExpectedArrivalTime
+                {
+                    Some(s) => match DateTime::parse_from_rfc3339(&s) {
+                        Ok(d) => Some(d.signed_duration_since(Utc::now()).num_minutes()),
+                        Err(_) => Option::None,
+                    },
+                    None => None,
+                };
+
+                let expected_arrival_time = match &stop_visit
+                    .MonitoredVehicleJourney
+                    .MonitoredCall
+                    .ExpectedArrivalTime
+                {
+                    Some(s) => Some(s.clone()),
+                    None => None,
+                };
+
+                output.push(StopInformation {
                     expected_arrival_time,
-                    minutes_until_arrival: delta.num_minutes(),
-                }))
+                    minutes_until_arrival,
+                    route_label: stop_visit.MonitoredVehicleJourney.PublishedLineName.clone(),
+                    stop_id: stop_id.to_string(),
+                });
             }
-            Err(_) => Ok(None),
+
+            return Ok(output);
+        } else {
+            return Ok(Vec::new());
         }
+    }
+
+    pub async fn fetch_multiple_stop_arrivals(
+        &self,
+        stop_ids: Vec<&str>,
+    ) -> Result<Vec<StopInformation>, MtaClientError> {
+        let mut fetches = Vec::new();
+
+        for stop_id in stop_ids {
+            fetches.push(self.fetch_stop_info(stop_id));
+        }
+
+        let mut output = Vec::<StopInformation>::new();
+
+        try_join_all(fetches)
+            .await
+            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .iter()
+            .for_each(|v| {
+                v.iter().for_each(|s| {
+                    output.push(StopInformation {
+                        expected_arrival_time: s.expected_arrival_time.clone(),
+                        minutes_until_arrival: s.minutes_until_arrival.clone(),
+                        route_label: s.route_label.clone(),
+                        stop_id: s.stop_id.clone(),
+                    });
+                });
+            });
+
+        Ok(output)
     }
 }

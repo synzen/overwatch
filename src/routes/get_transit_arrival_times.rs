@@ -174,24 +174,24 @@ mod tests {
 
         assert_eq!(body.data.arrivals.len(), 2);
 
-        match body.data.arrivals.iter().any(|arrival| {
-            arrival.minutes_until_arrival > Some(0)
-                && arrival.minutes_until_arrival < Some(4)
-                && arrival.expected_arrival_time == Some(future_date.to_rfc3339())
-                && arrival.stop_id == "123"
-        }) {
-            true => {}
-            false => panic!("Expected arrival time for 123 not found"),
-        };
+        // test 0th element is 123
+        assert_eq!(body.data.arrivals[0].stop_id, "123");
+        assert_eq!(body.data.arrivals[0].route_label, "A");
+        assert_eq!(
+            body.data.arrivals[0].expected_arrival_time,
+            Some(future_date.to_rfc3339())
+        );
+        assert_eq!(body.data.arrivals[0].minutes_until_arrival < Some(4), true);
+        assert_eq!(body.data.arrivals[0].minutes_until_arrival > Some(0), true);
 
-        match body.data.arrivals.iter().any(|arrival| {
-            arrival.minutes_until_arrival > Some(4)
-                && arrival.minutes_until_arrival < Some(12)
-                && arrival.expected_arrival_time == Some(future_date2.to_rfc3339())
-                && arrival.stop_id == "abc"
-        }) {
-            true => {}
-            false => panic!("Expected arrival time for abc not found"),
-        };
+        // test 1st element is abc
+        assert_eq!(body.data.arrivals[1].stop_id, "abc");
+        assert_eq!(body.data.arrivals[1].route_label, "B");
+        assert_eq!(
+            body.data.arrivals[1].expected_arrival_time,
+            Some(future_date2.to_rfc3339())
+        );
+        assert_eq!(body.data.arrivals[1].minutes_until_arrival < Some(12), true);
+        assert_eq!(body.data.arrivals[1].minutes_until_arrival > Some(8), true);
     }
 }

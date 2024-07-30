@@ -377,6 +377,13 @@ impl MtaClient {
                 });
             });
 
+        // sort by lowest minutes until arrival to highest
+        output.sort_by(|a, b| {
+            a.minutes_until_arrival
+                .unwrap_or(i64::MAX)
+                .cmp(&b.minutes_until_arrival.unwrap_or(i64::MAX))
+        });
+
         Ok(output)
     }
 }

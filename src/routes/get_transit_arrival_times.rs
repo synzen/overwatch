@@ -14,8 +14,8 @@ use validator::Validate;
 
 #[derive(Serialize, Deserialize)]
 pub struct StopResponseDataArrival {
-    pub expected_arrival_time: Option<String>,
-    pub minutes_until_arrival: Option<i64>,
+    pub expected_arrival_time: String,
+    pub minutes_until_arrival: i64,
     pub stop_id: String,
     pub route_label: String,
 }
@@ -179,19 +179,19 @@ mod tests {
         assert_eq!(body.data.arrivals[0].route_label, "A");
         assert_eq!(
             body.data.arrivals[0].expected_arrival_time,
-            Some(future_date.to_rfc3339())
+            future_date.to_rfc3339()
         );
-        assert_eq!(body.data.arrivals[0].minutes_until_arrival < Some(4), true);
-        assert_eq!(body.data.arrivals[0].minutes_until_arrival > Some(0), true);
+        assert_eq!(body.data.arrivals[0].minutes_until_arrival < 4, true);
+        assert_eq!(body.data.arrivals[0].minutes_until_arrival > 0, true);
 
         // test 1st element is abc
         assert_eq!(body.data.arrivals[1].stop_id, "abc");
         assert_eq!(body.data.arrivals[1].route_label, "B");
         assert_eq!(
             body.data.arrivals[1].expected_arrival_time,
-            Some(future_date2.to_rfc3339())
+            future_date2.to_rfc3339()
         );
-        assert_eq!(body.data.arrivals[1].minutes_until_arrival < Some(12), true);
-        assert_eq!(body.data.arrivals[1].minutes_until_arrival > Some(8), true);
+        assert_eq!(body.data.arrivals[1].minutes_until_arrival < 12, true);
+        assert_eq!(body.data.arrivals[1].minutes_until_arrival > 8, true);
     }
 }

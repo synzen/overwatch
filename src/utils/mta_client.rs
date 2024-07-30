@@ -12,7 +12,7 @@ use crate::types::{
         GetStopsForRouteResponse, GetStopsForRouteResponseDataEntryStopGroupingStopGroup,
         GetStopsForRouteResponseDataReferencesStop,
     },
-    response_formats::{self, GetStopInfoResponse},
+    response_formats::GetStopInfoResponse,
 };
 
 #[derive(Clone)]
@@ -28,8 +28,8 @@ pub struct MtaClient {
 }
 
 pub struct StopInformation {
-    pub expected_arrival_time: Option<String>,
-    pub minutes_until_arrival: Option<i64>,
+    pub expected_arrival_time: String,
+    pub minutes_until_arrival: i64,
     pub stop_id: String,
     pub route_label: String,
 }
@@ -336,12 +336,16 @@ impl MtaClient {
                     None => None,
                 };
 
-                output.push(StopInformation {
-                    expected_arrival_time,
-                    minutes_until_arrival,
-                    route_label: stop_visit.MonitoredVehicleJourney.PublishedLineName.clone(),
-                    stop_id: stop_id.to_string(),
-                });
+                if let (Some(minutes_until_arrival), Some(expected_arrival_time)) =
+                    (minutes_until_arrival, expected_arrival_time)
+                {
+                    output.push(StopInformation {
+                        expected_arrival_time: expected_arrival_time,
+                        minutes_until_arrival,
+                        route_label: stop_visit.MonitoredVehicleJourney.PublishedLineName.clone(),
+                        stop_id: stop_id.to_string(),
+                    });
+                }
             }
 
             return Ok(output);
@@ -378,11 +382,7 @@ impl MtaClient {
             });
 
         // sort by lowest minutes until arrival to highest
-        output.sort_by(|a, b| {
-            a.minutes_until_arrival
-                .unwrap_or(i64::MAX)
-                .cmp(&b.minutes_until_arrival.unwrap_or(i64::MAX))
-        });
+        output.sort_by(|a, b| a.minutes_until_arrival.cmp(&b.minutes_until_arrival));
 
         Ok(output)
     }

@@ -111,6 +111,8 @@ mod tests {
                                     ExpectedArrivalTime: Some(future_date.to_rfc3339()),
                                 },
                                 PublishedLineName: "A".to_string(),
+                                DirectionRef: "A".to_string(),
+                                LineRef: "A".to_string(),
                             },
                         }]),
                     }]),
@@ -138,6 +140,8 @@ mod tests {
                                     ExpectedArrivalTime: Some(future_date2.to_rfc3339()),
                                 },
                                 PublishedLineName: "B".to_string(),
+                                DirectionRef: "B".to_string(),
+                                LineRef: "B".to_string(),
                             },
                         }]),
                     }]),
@@ -193,5 +197,76 @@ mod tests {
         );
         assert_eq!(body.data.arrivals[1].minutes_until_arrival < 12, true);
         assert_eq!(body.data.arrivals[1].minutes_until_arrival > 8, true);
+    }
+
+    #[tokio::test]
+    async fn deduplicated_routes() {
+        let mut mock_server = mockito::Server::new_async().await;
+
+        let app = gen_app(AppConfig {
+            mta_host: mock_server.url(),
+            mta_key: "key".to_string(),
+            auth_key: None,
+        });
+
+        let future_date = Utc::now() + Duration::minutes(2);
+        let mock_response = GetStopInfoResponse {
+            Siri: Siri {
+                ServiceDelivery: ServiceDelivery {
+                    StopMonitoringDelivery: Vec::from([StopMonitoringDelivery {
+                        MonitoredStopVisit: Vec::from([
+                            MonitoredStopVisit {
+                                MonitoredVehicleJourney: MonitoredVehicleJourney {
+                                    MonitoredCall: MonitoredCall {
+                                        ExpectedArrivalTime: Some(future_date.to_rfc3339()),
+                                    },
+                                    PublishedLineName: "A".to_string(),
+                                    DirectionRef: "A".to_string(),
+                                    LineRef: "A".to_string(),
+                                },
+                            },
+                            MonitoredStopVisit {
+                                MonitoredVehicleJourney: MonitoredVehicleJourney {
+                                    MonitoredCall: MonitoredCall {
+                                        ExpectedArrivalTime: Some(future_date.to_rfc3339()),
+                                    },
+                                    PublishedLineName: "A".to_string(),
+                                    DirectionRef: "A".to_string(),
+                                    LineRef: "A".to_string(),
+                                },
+                            },
+                        ]),
+                    }]),
+                },
+            },
+        };
+
+        let mock = mock_server
+            .mock("GET", "/api/siri/stop-monitoring.json")
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&mock_response).unwrap())
+            .match_query(mockito::Matcher::Regex(".*".to_string()))
+            .create_async()
+            .await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/transit-arrival-times?stop_ids=123")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        mock.assert();
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: TransitArrivalsResponse = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(body.data.arrivals.len(), 1);
     }
 }

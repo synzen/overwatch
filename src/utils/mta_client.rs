@@ -313,8 +313,20 @@ impl MtaClient {
 
         let mut output = Vec::<StopInformation>::new();
 
+        let mut tracked_routes: HashSet<String> = HashSet::<String>::new();
+
         if let Some(delivery) = stop_monitoring_delivery {
             for stop_visit in delivery.MonitoredStopVisit.iter() {
+                let hash_key = format!(
+                    "{}{}",
+                    stop_visit.MonitoredVehicleJourney.PublishedLineName,
+                    stop_visit.MonitoredVehicleJourney.DirectionRef
+                );
+
+                if tracked_routes.contains(&hash_key) {
+                    continue;
+                }
+
                 let minutes_until_arrival = match &stop_visit
                     .MonitoredVehicleJourney
                     .MonitoredCall
@@ -345,6 +357,8 @@ impl MtaClient {
                         route_label: stop_visit.MonitoredVehicleJourney.PublishedLineName.clone(),
                         stop_id: stop_id.to_string(),
                     });
+
+                    tracked_routes.insert(hash_key);
                 }
             }
 

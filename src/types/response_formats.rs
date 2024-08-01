@@ -10,6 +10,8 @@ pub struct MonitoredCall {
 #[derive(Deserialize, Serialize)]
 pub struct MonitoredVehicleJourney {
     pub MonitoredCall: MonitoredCall,
+    pub LineRef: String,
+    pub DirectionRef: String,
     pub PublishedLineName: String,
 }
 

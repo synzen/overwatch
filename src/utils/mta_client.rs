@@ -32,6 +32,7 @@ pub struct StopInformation {
     pub minutes_until_arrival: i64,
     pub stop_id: String,
     pub route_label: String,
+    pub route_id: String,
 }
 
 pub struct GetGroupedStopsAtLocation {
@@ -357,6 +358,7 @@ impl MtaClient {
                     output.push(StopInformation {
                         expected_arrival_time: expected_arrival_time,
                         minutes_until_arrival,
+                        route_id: stop_visit.MonitoredVehicleJourney.LineRef.clone(),
                         route_label: stop_visit.MonitoredVehicleJourney.PublishedLineName.clone(),
                         stop_id: stop_id.to_string(),
                     });
@@ -392,6 +394,7 @@ impl MtaClient {
                     output.push(StopInformation {
                         expected_arrival_time: s.expected_arrival_time.clone(),
                         minutes_until_arrival: s.minutes_until_arrival.clone(),
+                        route_id: s.route_id.clone(),
                         route_label: s.route_label.clone(),
                         stop_id: s.stop_id.clone(),
                     });

@@ -10,7 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::error;
-use validator::Validate;
+use validator::{Validate, ValidateLength};
 
 #[derive(Serialize, Deserialize)]
 pub struct StopResponseDataArrival {
@@ -34,6 +34,8 @@ pub struct TransitArrivalsResponse {
 pub struct GetTransitStopPayload {
     #[validate(length(min = 1, message = "Must be at least 1 character"))]
     pub stop_ids: String,
+
+    pub route_ids: Option<String>,
 }
 
 pub async fn get_transit_arrival_times(
@@ -41,6 +43,14 @@ pub async fn get_transit_arrival_times(
     ValidatedQuery(payload): ValidatedQuery<GetTransitStopPayload>,
 ) -> Result<Response, AppError> {
     let stop_ids = payload.stop_ids.split(",").collect::<Vec<&str>>();
+    let route_ids = match payload.route_ids.as_deref() {
+        Some(s) => Some(
+            s.split(",")
+                .filter(|s| s.length() > Some(0))
+                .collect::<Vec<&str>>(),
+        ),
+        None => None,
+    };
 
     match state
         .mta_client
@@ -55,6 +65,15 @@ pub async fn get_transit_arrival_times(
                 data: TransitArrivalsData {
                     arrivals: v
                         .iter()
+                        .filter(|s| {
+                            if route_ids.length() == Some(0) {
+                                true
+                            } else if let Some(route_ids) = &route_ids {
+                                route_ids.contains(&&s.route_label.as_str())
+                            } else {
+                                true
+                            }
+                        })
                         .map(|s| StopResponseDataArrival {
                             stop_id: s.stop_id.clone(),
                             expected_arrival_time: s.expected_arrival_time.clone(),

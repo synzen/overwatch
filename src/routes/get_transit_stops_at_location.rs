@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     types::{app_state::AppState, lat_long_location::LatLongLocation},
     utils::{app_error::AppError, validated_query::ValidatedQuery},
@@ -32,6 +34,7 @@ pub struct GetTransitStopsAtLocationResponseRouteGrouping {
 
 #[derive(Serialize, Deserialize)]
 pub struct GetTransitStopsAtLocationResponseRoute {
+    pub id: String,
     pub name: String,
     pub groupings: Vec<GetTransitStopsAtLocationResponseRouteGrouping>,
 }
@@ -63,28 +66,29 @@ pub async fn get_transit_stops_at_location(
         })?
         .groups;
 
-    let mut route_names = groups
-        .iter()
-        .map(|g| g.route_name.clone())
-        .collect::<Vec<String>>();
-
-    route_names.sort();
-    route_names.dedup();
-
     let mut res = GetTransitStopsAtLocationResponse {
         data: GetTransitStopsAtLocationResponseData {
             routes: Vec::<GetTransitStopsAtLocationResponseRoute>::new(),
         },
     };
 
-    for route_name in &route_names {
+    let mut seen_route_ids = HashSet::<String>::new();
+
+    for route in &groups {
+        if seen_route_ids.contains(&route.route_id) {
+            continue;
+        }
+
+        seen_route_ids.insert(route.route_id.clone());
+
         let mut new_route = GetTransitStopsAtLocationResponseRoute {
-            name: route_name.clone(),
+            id: route.route_id.clone(),
+            name: route.route_name.clone(),
             groupings: Vec::<GetTransitStopsAtLocationResponseRouteGrouping>::new(),
         };
 
         for g in &groups {
-            if !g.route_name.eq(route_name) {
+            if route.route_name != g.route_name {
                 continue;
             }
 

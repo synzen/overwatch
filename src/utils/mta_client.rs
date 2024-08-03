@@ -55,6 +55,7 @@ pub struct GetStopsForRouteResultGroupStop {
 pub struct GetStopsForRouteResultGroup {
     pub id: String,
     pub name: String,
+    pub route_id: String,
     pub route_name: String,
     pub stops: Vec<GetStopsForRouteResultGroupStop>,
 }
@@ -151,6 +152,7 @@ impl MtaClient {
                 let group = GetStopsForRouteResultGroup {
                     id: g.id.clone(),
                     name: g.name.clone(),
+                    route_id: g.route_id.clone(),
                     route_name: g.route_name.clone(),
                     stops: g
                         .stops
@@ -172,14 +174,14 @@ impl MtaClient {
 
     pub async fn get_stops_for_route(
         &self,
-        route: String,
+        route_id: String,
     ) -> Result<GetStopsForRouteResult, MtaClientError> {
         let res = self
             .client
             .get(&format!(
                 "{}/api/where/stops-for-route/{}.json?key={}&includePolylines=false&version=2",
                 self.config.host,
-                encode(&route),
+                encode(&route_id),
                 self.config.api_key
             ))
             .send()
@@ -206,7 +208,7 @@ impl MtaClient {
             .references
             .routes
             .iter()
-            .find(|r| r.id == route)
+            .find(|r| r.id == route_id)
             .map(|r| r.shortName.clone())
             .unwrap_or("".to_string());
 
@@ -246,6 +248,7 @@ impl MtaClient {
                     id: grouping_id.clone(),
                     name: grouping_name.name.clone(),
                     stops: group_stops,
+                    route_id: route_id.clone(),
                     route_name: route_name.clone(),
                 });
             }

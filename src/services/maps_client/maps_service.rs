@@ -19,7 +19,7 @@ pub struct MapsService {
 pub struct AutocompleteSearchInput {
     pub input: String,
     pub lat: String,
-    pub lng: String,
+    pub lon: String,
 }
 
 pub struct AutocompleteSearchOutputPrediction {
@@ -49,7 +49,7 @@ impl MapsService {
             self.config.host,
             encode(&input.input),
             input.lat,
-            input.lng,
+            input.lon,
             self.config.api_key
         );
 

@@ -1,18 +1,18 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
-pub struct StructuredFormatting {
+#[derive(Serialize, Deserialize)]
+pub struct GoogleAutocompleteResponsePredictionStructuredFormatting {
     pub main_text: String,
     pub secondary_text: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Prediction {
+#[derive(Serialize, Deserialize)]
+pub struct GoogleAutocompleteResponsePrediction {
     pub place_id: String,
-    pub structed_formatting: StructuredFormatting,
+    pub structed_formatting: GoogleAutocompleteResponsePredictionStructuredFormatting,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct GoogleAutocompleteResponse {
-    pub predictions: Vec<Prediction>,
+    pub predictions: Vec<GoogleAutocompleteResponsePrediction>,
 }

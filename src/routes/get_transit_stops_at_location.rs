@@ -125,7 +125,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        app::{gen_app, AppConfig},
+        app::gen_mock_app,
         types::{
             mta_get_stops_at_location_response::{
                 GetStopsAtLocationResponse, GetStopsAtLocationResponseStops, StopAtLocation,
@@ -141,13 +141,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_response() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         let stops_for_location_response = GetStopsAtLocationResponse {
             data: GetStopsAtLocationResponseStops {
@@ -172,7 +166,8 @@ mod tests {
             },
         };
 
-        mock_server
+        mock_app
+            .mta_server
             .mock("GET", "/api/where/stops-for-location.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&stops_for_location_response).unwrap())
@@ -180,7 +175,8 @@ mod tests {
             .create_async()
             .await;
 
-        mock_server
+        mock_app
+            .mta_server
             .mock(
                 "GET",
                 mockito::Matcher::Regex(
@@ -193,7 +189,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri(format!(

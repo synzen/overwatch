@@ -68,30 +68,23 @@ pub async fn get_transit_routes(
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        app::gen_mock_app,
+        types::mta_get_routes_response::{
+            GetRoutesResponse, GetRoutesResponseData, GetRoutesResponseRoute,
+        },
+    };
     use axum::{
         body::{to_bytes, Body},
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
 
-    use crate::{
-        app::{gen_app, AppConfig},
-        types::mta_get_routes_response::{
-            GetRoutesResponse, GetRoutesResponseData, GetRoutesResponseRoute,
-        },
-    };
-
     use super::*;
 
     #[tokio::test]
     async fn get_response() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         let mock_response = GetRoutesResponse {
             data: GetRoutesResponseData {
@@ -108,7 +101,8 @@ mod tests {
             },
         };
 
-        let mock_server = mock_server
+        let mock_server = mock_app
+            .mta_server
             .mock("GET", "/api/where/routes-for-agency/MTA%20NYCT.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response).unwrap())
@@ -116,7 +110,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri("/transit-routes?search=A")

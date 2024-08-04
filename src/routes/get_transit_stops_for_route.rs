@@ -97,7 +97,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        app::{gen_app, AppConfig},
+        app::gen_mock_app,
         types::mta_get_stops_for_route_response::{
             GetStopsForRouteResponse, GetStopsForRouteResponseData,
             GetStopsForRouteResponseDataEntry, GetStopsForRouteResponseDataEntryStopGrouping,
@@ -113,13 +113,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn get_response() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         let mock_response = GetStopsForRouteResponse {
             data: GetStopsForRouteResponseData {
@@ -152,7 +146,8 @@ mod tests {
         };
 
         // NOTE: "B1" is a parameter to the mock URL!
-        let mock_server = mock_server
+        let mock_server = mock_app
+            .mta_server
             .mock("GET", "/api/where/stops-for-route/B1%2B.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response).unwrap())
@@ -160,7 +155,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri("/transit-stops-for-route?route_id=B1%2B")
@@ -190,16 +186,11 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_not_found() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         // NOTE: "B1" is a parameter to the mock URL!
-        let mock_server = mock_server
+        let mock_server = mock_app
+            .mta_server
             .mock("GET", "/api/where/stops-for-route/B1%2B.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&json!({})).unwrap())
@@ -208,7 +199,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri("/transit-stops-for-route?route_id=B1%2B")

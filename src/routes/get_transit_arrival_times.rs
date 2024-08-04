@@ -100,7 +100,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        app::{gen_app, AppConfig},
+        app::gen_mock_app,
         types::response_formats::{
             GetStopInfoResponse, MonitoredCall, MonitoredStopVisit, MonitoredVehicleJourney,
             ServiceDelivery, Siri, StopMonitoringDelivery,
@@ -111,13 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_response() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         let future_date = Utc::now() + Duration::minutes(2);
         let mock_response = GetStopInfoResponse {
@@ -139,7 +133,8 @@ mod tests {
             },
         };
 
-        let mock1 = mock_server
+        let mock1 = mock_app
+            .mta_server
             .mock("GET", "/api/siri/stop-monitoring.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response).unwrap())
@@ -167,7 +162,8 @@ mod tests {
                 },
             },
         };
-        let mock2 = mock_server
+        let mock2 = mock_app
+            .mta_server
             .mock("GET", "/api/siri/stop-monitoring.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response2).unwrap())
@@ -175,7 +171,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri("/transit-arrival-times?stop_ids=123,abc")
@@ -220,13 +217,7 @@ mod tests {
 
     #[tokio::test]
     async fn deduplicated_routes() {
-        let mut mock_server = mockito::Server::new_async().await;
-
-        let app = gen_app(AppConfig {
-            mta_host: mock_server.url(),
-            mta_key: "key".to_string(),
-            auth_key: None,
-        });
+        let mut mock_app = gen_mock_app().await;
 
         let future_date = Utc::now() + Duration::minutes(2);
         let mock_response = GetStopInfoResponse {
@@ -260,7 +251,8 @@ mod tests {
             },
         };
 
-        let mock = mock_server
+        let mock = mock_app
+            .mta_server
             .mock("GET", "/api/siri/stop-monitoring.json")
             .with_header("content-type", "application/json")
             .with_body(serde_json::to_string(&mock_response).unwrap())
@@ -268,7 +260,8 @@ mod tests {
             .create_async()
             .await;
 
-        let response = app
+        let response = mock_app
+            .app
             .oneshot(
                 Request::builder()
                     .uri("/transit-arrival-times?stop_ids=123")

@@ -54,7 +54,7 @@ pub async fn get_transit_stops_at_location(
     ValidatedQuery(payload): ValidatedQuery<GetTransitStopsAtLocation>,
 ) -> Result<Response, AppError> {
     let groups = state
-        .mta_client
+        .transit_service
         .get_stops_at_location(LatLongLocation {
             latitude: payload.lat,
             longitude: payload.lon,
@@ -126,7 +126,7 @@ mod tests {
 
     use crate::{
         app::gen_mock_app,
-        types::{
+        services::transit_service::types::{
             mta_get_stops_at_location_response::{
                 GetStopsAtLocationResponse, GetStopsAtLocationResponseStops, StopAtLocation,
                 StopAtLocationRoute,

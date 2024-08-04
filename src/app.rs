@@ -1,9 +1,11 @@
 use crate::{
     middlewares::auth::auth_middleware,
     routes::apply_routes,
-    services::maps_client::maps_service::{MapsService, MapsServiceConfig},
+    services::{
+        maps_client::maps_service::{MapsService, MapsServiceConfig},
+        transit_service::transit_service::{TransitService, TransitServiceConfig},
+    },
     types::app_state::AppState,
-    utils::mta_client::{MtaClient, MtaClientConfig},
 };
 use axum::{middleware, routing::get, Router};
 use tower_http::cors::CorsLayer;
@@ -27,7 +29,7 @@ pub fn gen_app(
 ) -> Router {
     let cors_middleware = CorsLayer::new();
     let state = AppState {
-        mta_client: MtaClient::new(MtaClientConfig {
+        transit_service: TransitService::new(TransitServiceConfig {
             host: mta_host,
             api_key: mta_key,
         }),
@@ -69,7 +71,7 @@ pub async fn gen_mock_app() -> MockApp {
     };
     let cors_middleware = CorsLayer::new();
     let state = AppState {
-        mta_client: MtaClient::new(MtaClientConfig {
+        transit_service: TransitService::new(TransitServiceConfig {
             host: app_config.mta_host,
             api_key: app_config.mta_key,
         }),

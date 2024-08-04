@@ -1,2 +1,2 @@
-pub mod maps_client;
 pub mod transit_service;
+pub mod types;

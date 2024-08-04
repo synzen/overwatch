@@ -53,7 +53,7 @@ pub async fn get_transit_arrival_times(
     };
 
     match state
-        .mta_client
+        .transit_service
         .fetch_multiple_stop_arrivals(stop_ids)
         .await
         .map_err(|e| {
@@ -101,7 +101,7 @@ mod tests {
 
     use crate::{
         app::gen_mock_app,
-        types::response_formats::{
+        services::transit_service::types::mta_get_stop_response::{
             GetStopInfoResponse, MonitoredCall, MonitoredStopVisit, MonitoredVehicleJourney,
             ServiceDelivery, Siri, StopMonitoringDelivery,
         },

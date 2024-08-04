@@ -1,6 +1,7 @@
 use crate::{
+    services::transit_service::transit_service::TransitClientError,
     types::app_state::AppState,
-    utils::{app_error::AppError, mta_client::MtaClientError, validated_query::ValidatedQuery},
+    utils::{app_error::AppError, validated_query::ValidatedQuery},
 };
 use axum::{
     extract::State,
@@ -48,11 +49,11 @@ pub async fn get_transit_stops_for_route(
     ValidatedQuery(payload): ValidatedQuery<GetTransitStopsForRoute>,
 ) -> Result<Response, AppError> {
     let groups = state
-        .mta_client
+        .transit_service
         .get_stops_for_route(payload.route_id)
         .await
         .map_err(|e| match e {
-            MtaClientError::ResourceNotFound => {
+            TransitClientError::ResourceNotFound => {
                 AppError::new(StatusCode::NOT_FOUND, "Route does not exist")
             }
             _ => {
@@ -98,7 +99,7 @@ mod tests {
 
     use crate::{
         app::gen_mock_app,
-        types::mta_get_stops_for_route_response::{
+        services::transit_service::types::mta_get_stops_for_route_response::{
             GetStopsForRouteResponse, GetStopsForRouteResponseData,
             GetStopsForRouteResponseDataEntry, GetStopsForRouteResponseDataEntryStopGrouping,
             GetStopsForRouteResponseDataEntryStopGroupingStopGroup,

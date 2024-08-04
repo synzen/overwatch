@@ -42,7 +42,7 @@ pub async fn get_transit_routes(
     ValidatedQuery(payload): ValidatedQuery<GetTransitRoutesPayload>,
 ) -> Result<Response, AppError> {
     let routes = state
-        .mta_client
+        .transit_service
         .get_routes(&payload.search)
         .await
         .map_err(|e| {
@@ -70,7 +70,7 @@ pub async fn get_transit_routes(
 mod tests {
     use crate::{
         app::gen_mock_app,
-        types::mta_get_routes_response::{
+        services::transit_service::types::mta_get_routes_response::{
             GetRoutesResponse, GetRoutesResponseData, GetRoutesResponseRoute,
         },
     };

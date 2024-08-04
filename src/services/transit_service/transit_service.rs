@@ -4,26 +4,27 @@ use ::futures::future::try_join_all;
 use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
-use crate::types::{
-    lat_long_location::LatLongLocation,
+use crate::types::lat_long_location::LatLongLocation;
+
+use super::types::{
     mta_get_routes_response::GetRoutesResponse,
+    mta_get_stop_response::GetStopInfoResponse,
     mta_get_stops_at_location_response::GetStopsAtLocationResponse,
     mta_get_stops_for_route_response::{
         GetStopsForRouteResponse, GetStopsForRouteResponseDataEntryStopGroupingStopGroup,
         GetStopsForRouteResponseDataReferencesStop,
     },
-    response_formats::GetStopInfoResponse,
 };
 
 #[derive(Clone)]
-pub struct MtaClientConfig {
+pub struct TransitServiceConfig {
     pub host: String,
     pub api_key: String,
 }
 
 #[derive(Clone)]
-pub struct MtaClient {
-    config: MtaClientConfig,
+pub struct TransitService {
+    config: TransitServiceConfig,
     client: reqwest::Client,
 }
 
@@ -65,25 +66,25 @@ pub struct GetStopsForRouteResult {
     pub groups: Vec<GetStopsForRouteResultGroup>,
 }
 
-pub enum MtaClientError {
+pub enum TransitClientError {
     Internal(String),
     ResourceNotFound,
 }
 
-impl std::fmt::Display for MtaClientError {
+impl std::fmt::Display for TransitClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            MtaClientError::Internal(e) => write!(f, "Internal error: {}", e),
-            MtaClientError::ResourceNotFound => write!(f, "Resource not found"),
+            TransitClientError::Internal(e) => write!(f, "Internal error: {}", e),
+            TransitClientError::ResourceNotFound => write!(f, "Resource not found"),
         }
     }
 }
 
-impl MtaClient {
-    pub fn new(config: MtaClientConfig) -> Self {
+impl TransitService {
+    pub fn new(config: TransitServiceConfig) -> Self {
         let request_client = reqwest::Client::new();
 
-        MtaClient {
+        TransitService {
             config,
             client: request_client,
         }
@@ -92,7 +93,7 @@ impl MtaClient {
     pub async fn get_stops_at_location(
         &self,
         loc: LatLongLocation,
-    ) -> Result<GetGroupedStopsAtLocation, MtaClientError> {
+    ) -> Result<GetGroupedStopsAtLocation, TransitClientError> {
         let routes_for_location = self
             .client
             .get(&format!(
@@ -105,7 +106,7 @@ impl MtaClient {
             .send()
             .await
             .map_err(|e| {
-                MtaClientError::Internal(format!(
+                TransitClientError::Internal(format!(
                     "Failed to send stops for location API request: {}",
                     e.to_string()
                 ))
@@ -113,7 +114,7 @@ impl MtaClient {
             .json::<GetStopsAtLocationResponse>()
             .await
             .map_err(|e| {
-                MtaClientError::Internal(format!(
+                TransitClientError::Internal(format!(
                     "Failed to parse json for stops-for-location request: {}",
                     e.to_string()
                 ))
@@ -176,7 +177,7 @@ impl MtaClient {
     pub async fn get_stops_for_route(
         &self,
         route_id: String,
-    ) -> Result<GetStopsForRouteResult, MtaClientError> {
+    ) -> Result<GetStopsForRouteResult, TransitClientError> {
         let res = self
             .client
             .get(&format!(
@@ -187,19 +188,19 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?;
 
         let json = match res.error_for_status() {
             Ok(r) => r
                 .json::<GetStopsForRouteResponse>()
                 .await
-                .map_err(|e| MtaClientError::Internal(e.to_string()))?,
+                .map_err(|e| TransitClientError::Internal(e.to_string()))?,
             Err(e) => match e.status() {
                 Some(s) if s == 404 => {
-                    return Err(MtaClientError::ResourceNotFound);
+                    return Err(TransitClientError::ResourceNotFound);
                 }
                 _ => {
-                    return Err(MtaClientError::Internal(e.to_string()));
+                    return Err(TransitClientError::Internal(e.to_string()));
                 }
             },
         };
@@ -261,7 +262,7 @@ impl MtaClient {
     pub async fn get_routes(
         &self,
         search: &str,
-    ) -> Result<FindTransitRoutesResult, MtaClientError> {
+    ) -> Result<FindTransitRoutesResult, TransitClientError> {
         let res = self
             .client
             .get(&format!(
@@ -270,13 +271,13 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?;
 
         let mapped_routes = match res.error_for_status() {
             Ok(r) => r
                 .json::<GetRoutesResponse>()
                 .await
-                .map_err(|e| MtaClientError::Internal(e.to_string()))?
+                .map_err(|e| TransitClientError::Internal(e.to_string()))?
                 .data
                 .list
                 .iter()
@@ -286,7 +287,7 @@ impl MtaClient {
                     name: d.shortName.clone(),
                 })
                 .collect(),
-            Err(e) => return Err(MtaClientError::Internal(e.to_string())),
+            Err(e) => return Err(TransitClientError::Internal(e.to_string())),
         };
 
         Ok(FindTransitRoutesResult {
@@ -297,7 +298,7 @@ impl MtaClient {
     pub async fn fetch_stop_info(
         &self,
         stop_id: &str,
-    ) -> Result<Vec<StopInformation>, MtaClientError> {
+    ) -> Result<Vec<StopInformation>, TransitClientError> {
         let response = self
             .client
             .get(&format!(
@@ -306,12 +307,12 @@ impl MtaClient {
             ))
             .send()
             .await
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?
             .error_for_status()
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?
             .json::<GetStopInfoResponse>()
             .await
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?;
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?;
 
         let stop_monitoring_delivery = response.Siri.ServiceDelivery.StopMonitoringDelivery.first();
 
@@ -376,7 +377,7 @@ impl MtaClient {
     pub async fn fetch_multiple_stop_arrivals(
         &self,
         stop_ids: Vec<&str>,
-    ) -> Result<Vec<StopInformation>, MtaClientError> {
+    ) -> Result<Vec<StopInformation>, TransitClientError> {
         let mut fetches = Vec::new();
 
         for stop_id in stop_ids {
@@ -387,7 +388,7 @@ impl MtaClient {
 
         try_join_all(fetches)
             .await
-            .map_err(|e| MtaClientError::Internal(e.to_string()))?
+            .map_err(|e| TransitClientError::Internal(e.to_string()))?
             .iter()
             .for_each(|v| {
                 v.iter().for_each(|s| {

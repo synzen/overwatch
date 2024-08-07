@@ -4,7 +4,10 @@ use ::futures::future::try_join_all;
 use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
-use crate::types::lat_long_location::LatLongLocation;
+use crate::{
+    services::maps_client::maps_service::MapsService,
+    types::lat_long_location::GetStopsAtLocationInput,
+};
 
 use super::types::{
     mta_get_routes_response::GetRoutesResponse,
@@ -20,6 +23,7 @@ use super::types::{
 pub struct TransitServiceConfig {
     pub host: String,
     pub api_key: String,
+    pub maps_service: MapsService,
 }
 
 #[derive(Clone)]
@@ -92,17 +96,28 @@ impl TransitService {
 
     pub async fn get_stops_at_location(
         &self,
-        loc: LatLongLocation,
+        loc: GetStopsAtLocationInput,
     ) -> Result<GetGroupedStopsAtLocation, TransitClientError> {
+        let (lat, lon) = match loc {
+            GetStopsAtLocationInput::LatLong(lat, lon) => (lat, lon),
+            GetStopsAtLocationInput::GooglePlaceId(loc) => self
+                .config
+                .maps_service
+                .extract_coordinates_from_place_id(&loc)
+                .await
+                .map_err(|e| {
+                    TransitClientError::Internal(format!("Failed to extract coordinates: {}", e))
+                })?,
+        };
+
+        let url = &format!(
+            "{}/api/where/stops-for-location.json?lat={}&lon={}&latSpan=0.005&lonSpan=0.005&key={}",
+            self.config.host, lat, lon, self.config.api_key
+        );
+
         let routes_for_location = self
             .client
-            .get(&format!(
-            "{}/api/where/stops-for-location.json?lat={}&lon={}&latSpan=0.005&lonSpan=0.005&key={}",
-            self.config.host,
-            loc.latitude,
-            loc.longitude,
-            self.config.api_key
-        ))
+            .get(url)
             .send()
             .await
             .map_err(|e| {

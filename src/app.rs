@@ -28,15 +28,17 @@ pub fn gen_app(
     }: AppConfig,
 ) -> Router {
     let cors_middleware = CorsLayer::new();
+    let maps_service = MapsService::new(MapsServiceConfig {
+        host: google_maps_host,
+        api_key: google_maps_key,
+    });
     let state = AppState {
         transit_service: TransitService::new(TransitServiceConfig {
             host: mta_host,
             api_key: mta_key,
+            maps_service: maps_service.clone(),
         }),
-        maps_service: MapsService::new(MapsServiceConfig {
-            host: google_maps_host,
-            api_key: google_maps_key,
-        }),
+        maps_service: maps_service.clone(),
         auth_key,
     };
 
@@ -70,15 +72,17 @@ pub async fn gen_mock_app() -> MockApp {
         auth_key: None,
     };
     let cors_middleware = CorsLayer::new();
+    let maps_service = MapsService::new(MapsServiceConfig {
+        host: app_config.google_maps_host,
+        api_key: app_config.google_maps_key,
+    });
     let state = AppState {
         transit_service: TransitService::new(TransitServiceConfig {
             host: app_config.mta_host,
             api_key: app_config.mta_key,
+            maps_service: maps_service.clone(),
         }),
-        maps_service: MapsService::new(MapsServiceConfig {
-            host: app_config.google_maps_host,
-            api_key: app_config.google_maps_key,
-        }),
+        maps_service: maps_service.clone(),
         auth_key: app_config.auth_key,
     };
 

@@ -77,4 +77,45 @@ impl MapsService {
                 .collect(),
         })
     }
+
+    pub async fn extract_coordinates_from_place_id(
+        &self,
+        place_id: &str,
+    ) -> Result<(String, String), MapsServiceError> {
+        let url = format!(
+            "{}/maps/api/place/details/json?place_id={}&fields=geometry&key={}",
+            self.config.host, place_id, self.config.api_key
+        );
+
+        let resp =
+            self.client.get(&url).send().await.map_err(|e| {
+                MapsServiceError::Internal(format!("Failed to send request: {}", e))
+            })?;
+
+        let body = resp.json::<serde_json::Value>().await.map_err(|e| {
+            MapsServiceError::Internal(format!("Failed to get response body: {}", e))
+        })?;
+
+        let lat = body
+            .get("result")
+            .and_then(|r| r.get("geometry"))
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lat"))
+            .and_then(|l| l.as_str())
+            .ok_or_else(|| {
+                MapsServiceError::Internal("Failed to extract latitude from response".to_string())
+            })?;
+
+        let lon = body
+            .get("result")
+            .and_then(|r| r.get("geometry"))
+            .and_then(|g| g.get("location"))
+            .and_then(|l| l.get("lng"))
+            .and_then(|l| l.as_str())
+            .ok_or_else(|| {
+                MapsServiceError::Internal("Failed to extract longitude from response".to_string())
+            })?;
+
+        Ok((lat.to_string(), lon.to_string()))
+    }
 }

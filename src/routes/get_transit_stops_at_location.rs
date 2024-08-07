@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    types::{app_state::AppState, lat_long_location::LatLongLocation},
+    types::{app_state::AppState, lat_long_location::GetStopsAtLocationInput},
     utils::{app_error::AppError, validated_query::ValidatedQuery},
 };
 use axum::{
@@ -16,8 +16,8 @@ use validator::Validate;
 
 #[derive(Validate, Deserialize)]
 pub struct GetTransitStopsAtLocation {
-    pub lat: String,
-    pub lon: String,
+    pub coordinates: Option<String>,
+    pub place_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,9 +55,35 @@ pub async fn get_transit_stops_at_location(
 ) -> Result<Response, AppError> {
     let groups = state
         .transit_service
-        .get_stops_at_location(LatLongLocation {
-            latitude: payload.lat,
-            longitude: payload.lon,
+        .get_stops_at_location(match payload {
+            GetTransitStopsAtLocation {
+                coordinates: Some(coordinates),
+                place_id: None,
+            } => {
+                let coordinates: Vec<&str> = coordinates.split(',').collect();
+                let lat = coordinates.get(0);
+                let lon = coordinates.get(1);
+
+                match (lat, lon) {
+                    (Some(lat), Some(lon)) => {
+                        GetStopsAtLocationInput::LatLong(lat.to_string(), lon.to_string())
+                    }
+                    _ => {
+                        return Err(AppError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Invalid coordinates. Must be in the form of coordinates=lat,lon",
+                        ))
+                    }
+                }
+            }
+            GetTransitStopsAtLocation {
+                coordinates: None,
+                place_id: Some(place_id),
+            } => GetStopsAtLocationInput::GooglePlaceId(place_id),
+            _ => return Err(AppError::new(
+                StatusCode::BAD_REQUEST,
+                "Must provide either coordinates in the form of coordinates=lat,lon or place_id",
+            )),
         })
         .await
         .map_err(|e| {
@@ -140,7 +166,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn test_response() {
+    async fn test_response_latlon() {
         let mut mock_app = gen_mock_app().await;
 
         let stops_for_location_response = GetStopsAtLocationResponse {
@@ -194,7 +220,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri(format!(
-                        "/transit-stops-at-location?lat={}&lon={}",
+                        "/transit-stops-at-location?coordinates={},{}",
                         1.0, 1.0
                     ))
                     .header("content-type", "application/json")

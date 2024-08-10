@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use urlencoding::decode;
 use validator::{Validate, ValidateLength};
 
 #[derive(Serialize, Deserialize)]
@@ -47,7 +48,8 @@ pub async fn get_transit_arrival_times(
         Some(s) => Some(
             s.split(",")
                 .filter(|s| s.length() > Some(0))
-                .collect::<Vec<&str>>(),
+                .map(|s| decode(s.trim()).unwrap().to_string())
+                .collect::<Vec<String>>(),
         ),
         None => None,
     };
@@ -66,13 +68,10 @@ pub async fn get_transit_arrival_times(
                     arrivals: v
                         .iter()
                         .filter(|s| {
-                            if route_ids.length() == Some(0) {
-                                true
-                            } else if let Some(route_ids) = &route_ids {
-                                route_ids.contains(&&s.route_label.as_str())
-                            } else {
-                                true
-                            }
+                            route_ids.is_none()
+                                || route_ids
+                                    .as_ref()
+                                    .is_some_and(|ids| ids.contains(&s.route_id))
                         })
                         .map(|s| StopResponseDataArrival {
                             stop_id: s.stop_id.clone(),

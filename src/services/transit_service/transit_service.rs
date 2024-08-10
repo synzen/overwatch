@@ -314,12 +314,14 @@ impl TransitService {
         &self,
         stop_id: &str,
     ) -> Result<Vec<StopInformation>, TransitClientError> {
+        let url = &format!(
+            "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef={}",
+            self.config.host, self.config.api_key, stop_id
+        );
+
         let response = self
             .client
-            .get(&format!(
-                "{}/api/siri/stop-monitoring.json?key={}&MonitoringRef={}",
-                self.config.host, self.config.api_key, stop_id
-            ))
+            .get(url)
             .send()
             .await
             .map_err(|e| TransitClientError::Internal(e.to_string()))?
